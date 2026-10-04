@@ -1935,6 +1935,21 @@ end
 
 local journey_handoff = { suspended = false, restore_seats = false }
 driving_bus.journey = {
+    passenger_layout = function()
+        local ox = find_active_ox()
+        local family = classify_cart_model(find_cart_body(ox))
+        local presets = options.Presets[family]
+        local preset = presets and (presets[preset_cursor[family] or 1] or presets[1])
+        if not preset then return nil end
+        local copy = {}
+        for i, slot in ipairs(preset.pawns) do
+            copy[i] = {}
+            for key, value in pairs(slot) do
+                if type(value) ~= "table" then copy[i][key] = value end
+            end
+        end
+        return copy
+    end,
     suspend = function()
         journey_handoff.restore_seats = seating_lock_active
         journey_handoff.suspended = true
