@@ -175,6 +175,7 @@ local input_bindings = (function()
         serialize_key = encode_binding,
         deserialize_key = decode_binding,
         imgui_rebind_button = imgui_rebind_button,
+        cancel_capture = function() binding_capture_id = nil end,
     }
 end)()
 local character_manager = sdk.get_managed_singleton("app.CharacterManager")
@@ -344,11 +345,11 @@ local options = {
     Key_PadModifyDash = {type = 'gamepad', key = 'LUp'},
     Key_MouseModifyDash = {type = 'keyboard', key = 'Alpha1'},
     Key_PadModifyWalk = {type = 'gamepad', key = 'LLeft'},
-    Key_MouseModifyWalk = {type = 'keyboard', key = 'Alpha3'},
+    Key_MouseModifyWalk = {type = 'keyboard', key = 'Alpha2'},
     Key_PadModifyTeleport = {type = 'gamepad', key = 'LRight'},
-    Key_MouseModifyTeleport = {type = 'keyboard', key = 'Alpha4'},
+    Key_MouseModifyTeleport = {type = 'keyboard', key = 'Alpha3'},
     Key_PadModifyStand = {type = 'gamepad', key = 'LDown'},
-    Key_MouseModifyStand = {type = 'keyboard', key = 'Alpha2'},
+    Key_MouseModifyStand = {type = 'keyboard', key = 'Alpha4'},
     Key_PadModifySwitch = {type = 'gamepad', key = 'RTrigBottom'},
     Key_MouseModifySwitch = {type = 'keyboard', key = 'Alpha5'},
     
@@ -366,6 +367,13 @@ local options = {
 
     Presets = {}
 }
+
+local default_key_bindings = {}
+for name, binding in pairs(options) do
+    if name:find("^Key_") then
+        default_key_bindings[name] = { type = binding.type, key = binding.key }
+    end
+end
 
 local watched_inputs = {}
 
@@ -533,6 +541,8 @@ end
 local fixed_cart_parameters = {
     DASH_DURATION = true, RECOVERY_WALK_SECONDS = true,
     RECOVERY_MAX_TURN = true, DESTINATION_BRAKE_DISTANCE = true,
+    AUTO_RUSH = true, DRIVER_NONCOMBAT = true,
+    CART_NONCOMBAT = true, PLAYER_NEAR_CART_NONCOMBAT = true,
 }
 
 local function load_options()
@@ -574,6 +584,14 @@ local function persist_options()
     end
     json.dump_file("OxcartsJourneyRedux.json", save_data)
     rebuild_input_watchlist()
+end
+
+local function restore_default_key_bindings()
+    input_bindings.cancel_capture()
+    for name, binding in pairs(default_key_bindings) do
+        options[name] = { type = binding.type, key = binding.key }
+    end
+    persist_options()
 end
 
 load_options()
@@ -2162,45 +2180,10 @@ end
 re.on_draw_ui(function()
     if imgui.tree_node("Oxcarts Journey Redux") then
         
-        if imgui.tree_node("General Settings") then
-            local changed = false
-            local c_auto, v_auto = imgui.checkbox("Automatic rush", options.AUTO_RUSH)
-            if c_auto then options.AUTO_RUSH = v_auto; cart_trip.auto_paused = false; changed = true end
-            local c_driver_battle, v_driver_battle = imgui.checkbox("Keep driver out of combat", options.DRIVER_NONCOMBAT)
-            if c_driver_battle then options.DRIVER_NONCOMBAT = v_driver_battle; changed = true end
-            local c_cart_battle, v_cart_battle = imgui.checkbox("Keep cart out of combat", options.CART_NONCOMBAT)
-            if c_cart_battle then options.CART_NONCOMBAT = v_cart_battle; changed = true end
-            local c_player_battle, v_player_battle = imgui.checkbox("Keep non-combat within 2.5 of cart body", options.PLAYER_NEAR_CART_NONCOMBAT)
-            if c_player_battle then options.PLAYER_NEAR_CART_NONCOMBAT = v_player_battle; cart_normal_guard.next_at = nil; changed = true end
-            
-            imgui.spacing()
-            imgui.text("Damage Multipliers")
-            
-            local c_ox, v_ox = imgui.drag_float("Ox Damage Received", options.OX_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_ox then options.OX_DAMAGE_RECEIVED = v_ox; changed = true end
-            
-            local c_cart, v_cart = imgui.drag_float("Cart Damage Received", options.GIMMICK_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_cart then options.GIMMICK_DAMAGE_RECEIVED = v_cart; changed = true end
-            
-            local c_driver, v_driver = imgui.drag_float("Driver Damage Received", options.DRIVER_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_driver then options.DRIVER_DAMAGE_RECEIVED = v_driver; changed = true end
-            
-            local c_grd_recv, v_grd_recv = imgui.drag_float("Guard Damage Received", options.GUARD_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_grd_recv then options.GUARD_DAMAGE_RECEIVED = v_grd_recv; changed = true end
-            
-            local c_grd_dealt, v_grd_dealt = imgui.drag_float("Guard Damage Dealt", options.GUARD_DAMAGE_DEALT, 0.01, 0.0, 10.0)
-            if c_grd_dealt then options.GUARD_DAMAGE_DEALT = v_grd_dealt; changed = true end
-            
-            if changed then 
-                persist_options() 
-                rebuild_damage_rules() 
-            end
-            
-            imgui.tree_pop()
-        end
-
         if imgui.tree_node("Keybind Settings") then
             imgui.text("Format: [Action] : [Gamepad] | [Keyboard] ")
+            imgui.spacing()
+            if imgui.button("Restore default keybinds") then restore_default_key_bindings() end
             imgui.spacing()
 
             local function draw_dual_bind(label, padKey, mouseKey)
@@ -2209,8 +2192,14 @@ re.on_draw_ui(function()
                 local p_changed, p_value = input_bindings.imgui_rebind_button(padKey, options[padKey])
                 if p_changed then options[padKey] = p_value; persist_options() end
                 imgui.same_line(300)
-                local m_changed, m_value = input_bindings.imgui_rebind_button(mouseKey, options[mouseKey])
-                if m_changed then options[mouseKey] = m_value; persist_options() end
+                if mouseKey == "Key_MouseSkillDash" then
+                    imgui.text("Mouse Left")
+                elseif mouseKey == "Key_MouseSkillWalk" then
+                    imgui.text("Mouse Right")
+                else
+                    local m_changed, m_value = input_bindings.imgui_rebind_button(mouseKey, options[mouseKey])
+                    if m_changed then options[mouseKey] = m_value; persist_options() end
+                end
             end
 
             if imgui.tree_node("Cross Hotbar Key -- (Show only when near oxcart.)") then
@@ -2334,6 +2323,34 @@ re.on_draw_ui(function()
             end
             imgui.tree_pop()
         end
+        if imgui.tree_node("Other Settings") then
+            local changed = false
+            imgui.spacing()
+            imgui.text("Damage Multipliers")
+
+            local c_ox, v_ox = imgui.drag_float("Ox Damage Received", options.OX_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
+            if c_ox then options.OX_DAMAGE_RECEIVED = v_ox; changed = true end
+
+            local c_cart, v_cart = imgui.drag_float("Cart Damage Received", options.GIMMICK_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
+            if c_cart then options.GIMMICK_DAMAGE_RECEIVED = v_cart; changed = true end
+
+            local c_driver, v_driver = imgui.drag_float("Driver Damage Received", options.DRIVER_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
+            if c_driver then options.DRIVER_DAMAGE_RECEIVED = v_driver; changed = true end
+
+            local c_grd_recv, v_grd_recv = imgui.drag_float("Guard Damage Received", options.GUARD_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
+            if c_grd_recv then options.GUARD_DAMAGE_RECEIVED = v_grd_recv; changed = true end
+
+            local c_grd_dealt, v_grd_dealt = imgui.drag_float("Guard Damage Dealt", options.GUARD_DAMAGE_DEALT, 0.01, 0.0, 10.0)
+            if c_grd_dealt then options.GUARD_DAMAGE_DEALT = v_grd_dealt; changed = true end
+
+            if changed then
+                persist_options()
+                rebuild_damage_rules()
+            end
+
+            imgui.tree_pop()
+        end
+
         imgui.tree_pop()
     end
 end)

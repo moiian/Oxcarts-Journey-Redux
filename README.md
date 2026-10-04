@@ -25,4 +25,10 @@ Dragon's Dogma 2 REFramework 牛车旅行模组。
 
 ## 设置
 
-REFramework 菜单中可调整按键、座位预设、保护系数、自动冲刺和三个非战斗开关。设置保存到 `reframework/data/OxcartsJourneyRedux.json`，该本地配置不提交到仓库。
+REFramework 菜单依次为 `Keybind Settings`、`Seating Position Presets`、`Other Settings`。可调整按键、座位预设与保护系数；自动冲刺和三个非战斗功能固定启用，不显示开关，旧配置也不能关闭它们。
+
+修饰键默认为 `LShift`；修饰键配合数字键 `1/2/3/4/5` 分别执行冲刺、Walk、随从坐下/传送、随从起身和切换预设。手柄对应 `LUp/LLeft/LRight/LDown/RTrigBottom`，修饰键为 `LTrigBottom`。
+
+右侧坐姿技能栏：冲刺使用鼠标左键，Walk 使用鼠标右键，随从坐下/传送使用 `E`，起身使用 `F`，切换预设使用左 `Ctrl`。鼠标左右键沿用原有固定实现。`Restore default keybinds` 恢复全部默认键位，取消正在等待的映射输入，不改座位预设或保护系数。已有自定义键位保留，需点击该按钮才能恢复新默认值。
+
+设置保存到 `reframework/data/OxcartsJourneyRedux.json`，该本地配置不提交到仓库。
