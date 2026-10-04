@@ -33,6 +33,7 @@ local input_bindings = (function()
     local key_state = { down = { keyboard = {}, gamepad = {} }, trigger = { keyboard = {}, gamepad = {} } }
     local keyboard_name_by_code = invert_enum_map(keyboard_codes)
     local binding_capture_id = nil
+    local steering_input = { keyboard = 0, stick = 0 }
 
     -- Enum members such as None have value 0. A bitmask test with 0 is always
     -- true, so they must never participate in polling or key rebinding.
@@ -47,6 +48,21 @@ local input_bindings = (function()
         local gp = sdk.call_native_func(gamepad_singleton, gamepad_type, "get_MergedDevice")
         local gp_down = gp and (gp:call("get_Button") or 0) or 0
         local gp_trigger = gp and (gp:call("get_ButtonDown") or 0) or 0
+
+        -- Steering keys must be sampled even though they are not hotbar bindings.
+        steering_input.keyboard, steering_input.stick = 0, 0
+        if binding_capture_id == nil then
+            local left = kb and keyboard_codes.A and kb:call("isDown", keyboard_codes.A) or false
+            local right = kb and keyboard_codes.D and kb:call("isDown", keyboard_codes.D) or false
+            steering_input.keyboard = (right and 1 or 0) - (left and 1 or 0)
+            if gp then
+                local ok, axis = pcall(function() return gp:call("get_AxisL()") end)
+                if ok and axis then
+                    local x = tonumber(axis.x) or 0
+                    if x == x then steering_input.stick = math.max(-1, math.min(1, x)) end
+                end
+            end
+        end
 
         if binding_capture_id == nil and selected_bindings ~= nil then
             for _, binding in ipairs(selected_bindings) do
@@ -176,6 +192,10 @@ local input_bindings = (function()
         deserialize_key = decode_binding,
         imgui_rebind_button = imgui_rebind_button,
         cancel_capture = function() binding_capture_id = nil end,
+        steering_axes = function()
+            if binding_capture_id ~= nil then return 0, 0 end
+            return steering_input.keyboard, steering_input.stick
+        end,
     }
 end)()
 local character_manager = sdk.get_managed_singleton("app.CharacterManager")
@@ -334,6 +354,7 @@ local options = {
     DRIVER_NONCOMBAT = true,
     CART_NONCOMBAT = true,
     PLAYER_NEAR_CART_NONCOMBAT = true,
+    MANUAL_STEERING_SENSITIVITY = 45.0,
     DISABLE_CAMERA = true,
     STATUS_IMMUNITY = true,
     PREVENT_INSTABREAKS = true,
@@ -1409,6 +1430,62 @@ local function resolve_steering_cow(ox)
     return cow
 end
 
+local manual_steering = { sampled_at = nil, cow_address = nil, keyboard_axis = 0, target = nil }
+
+local function update_manual_steering(ox, seated)
+    if not seated or gameplay_is_paused() then
+        manual_steering.sampled_at, manual_steering.cow_address = nil, nil
+        manual_steering.keyboard_axis, manual_steering.target = 0, nil
+        return
+    end
+    local cow = resolve_steering_cow(ox)
+    if not cow then
+        manual_steering.sampled_at, manual_steering.cow_address = nil, nil
+        manual_steering.keyboard_axis, manual_steering.target = 0, nil
+        return
+    end
+    local ok, err = pcall(function()
+        local heading = tonumber(cow["<PosRotContext>k__BackingField"]:call("get_AngleYDeg()"))
+        assert(heading and heading == heading, "Cow heading unavailable")
+        local dt = manual_steering.sampled_at and math.max(0, math.min(0.1, runtime_clock - manual_steering.sampled_at)) or 0
+        if manual_steering.cow_address ~= cow:get_address() then
+            manual_steering.cow_address, manual_steering.target = cow:get_address(), heading
+            manual_steering.keyboard_axis, dt = 0, 0
+        end
+        manual_steering.sampled_at = runtime_clock
+        local keyboard, stick = input_bindings.steering_axes()
+        -- Keyboard has priority while pressed (and during its short release ramp).
+        -- A/D rise and fall over about 0.15 s; the stick keeps analog strength.
+        local change = dt / 0.15
+        manual_steering.keyboard_axis = manual_steering.keyboard_axis
+            + math.max(-change, math.min(change, keyboard - manual_steering.keyboard_axis))
+        local axis = manual_steering.keyboard_axis
+        if keyboard == 0 and math.abs(axis) < 0.001 then
+            local deadzone = 0.15
+            axis = math.abs(stick) <= deadzone and 0
+                or (stick < 0 and -1 or 1) * (math.abs(stick) - deadzone) / (1 - deadzone)
+        end
+        local speed = math.max(5, math.min(180, tonumber(options.MANUAL_STEERING_SENSITIVITY) or 45))
+        if math.abs(axis) > 0.001 then
+            manual_steering.target = (heading - axis * speed * dt + 180) % 360 - 180
+        end
+        -- Hold the latest target after release, not the heading from before a turn.
+        -- No Transform writes and no navigation/driver hooks in this prototype.
+        cow:call("set_TargetFrontAngleDeg(System.Single)", manual_steering.target)
+        cow:call("set_TargetMoveAngleDeg(System.Single)", manual_steering.target)
+    end)
+    if not ok then
+        manual_steering.sampled_at, manual_steering.cow_address = nil, nil
+        manual_steering.keyboard_axis, manual_steering.target = 0, nil
+        if not manual_steering.error_reported then
+            log.error("[Oxcarts Journey Redux] Manual steering failed: " .. tostring(err))
+            manual_steering.error_reported = true
+        end
+    else
+        manual_steering.error_reported = false
+    end
+end
+
 local function stop_cart_rush(ox, reason, exit_action, keep_live_action, force_exit_action)
     if reason then
         cart_trip.stop_reason = reason
@@ -1947,7 +2024,10 @@ re.on_application_entry("LateUpdateBehavior", function()
     local ox = find_active_ox()
     observe_cart_pause(ox)
     player = character_manager["<ManualPlayer>k__BackingField"]
-    if not player or not player:get_Valid() then return end
+    if not player or not player:get_Valid() then
+        update_manual_steering(nil, false)
+        return
+    end
     input = player:get_Input()
     update_runtime_clock()
 
@@ -1965,6 +2045,7 @@ re.on_application_entry("LateUpdateBehavior", function()
     photo_mode_was_active = in_photo_mode
 
     if gameplay_is_paused() or in_photo_mode then
+        update_manual_steering(nil, false)
         if in_photo_mode then enforce_seat_transforms(ox, true) end
         return
     end
@@ -2127,6 +2208,7 @@ re.on_application_entry("LateUpdateBehavior", function()
             end
         end
     end
+    update_manual_steering(ox, physically_sitting)
 end)
 
 local function draw_seat_editor(label, seat_spec)
@@ -2318,6 +2400,12 @@ re.on_draw_ui(function()
             end
             imgui.tree_pop()
         end
+        if imgui.tree_node("Debug") then
+            local changed, speed = imgui.slider_float("Steering sensitivity (degrees/s)", options.MANUAL_STEERING_SENSITIVITY, 5, 180)
+            if changed then options.MANUAL_STEERING_SENSITIVITY = speed; persist_options() end
+            imgui.tree_pop()
+        end
+
         if imgui.tree_node("Other Settings") then
             local changed = false
             imgui.spacing()
