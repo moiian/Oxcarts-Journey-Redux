@@ -192,6 +192,11 @@ local frame_jobs = {}
 local runtime_clock = 0
 local player, input
 
+-- Native Input action flags, not keyboard enum values. Keep the original
+-- mouse mappings used by Better Oxcarts Redux for seated cart controls.
+local MOUSE_DASH_FLAG = 16777218
+local MOUSE_WALK_FLAG = 1946159104
+
 -- Each cart family keeps an independent preset cursor.
 local preset_cursor = { Normal = 1, Rainy = 1, Wealthy = 1 }
 
@@ -828,10 +833,10 @@ local function skill_binding_is_down(feature)
         if s and v then return true end
     end
     if feature.name == "Oxcart Dash" and input then
-        local s, v = pcall(function() return input:isButtonOn(XMouse) end)
+        local s, v = pcall(function() return input:isButtonOn(MOUSE_DASH_FLAG) end)
         if s and v then return true end
     elseif feature.name == "Oxcart Walk" and input then
-        local s, v = pcall(function() return input:isButtonOn(BMouse) end)
+        local s, v = pcall(function() return input:isButtonOn(MOUSE_WALK_FLAG) end)
         if s and v then return true end
     elseif is_key_valid(options[feature.mouseSkillKey]) then
         local s, v = pcall(input_bindings.is_pressed, options[feature.mouseSkillKey])
@@ -2113,10 +2118,10 @@ re.on_application_entry("LateUpdateBehavior", function()
                 trigger_skill = trigger_skill or (s and v)
             end
             if feature.name == "Oxcart Dash" and input then
-                local s, v = pcall(function() return input:isButtonTrigger(XMouse) end)
+                local s, v = pcall(function() return input:isButtonTrigger(MOUSE_DASH_FLAG) end)
                 trigger_skill = trigger_skill or (s and v)
             elseif feature.name == "Oxcart Walk" and input then
-                local s, v = pcall(function() return input:isButtonTrigger(BMouse) end)
+                local s, v = pcall(function() return input:isButtonTrigger(MOUSE_WALK_FLAG) end)
                 trigger_skill = trigger_skill or (s and v)
             elseif is_key_valid(options[feature.mouseSkillKey]) then
                 local s, v = pcall(input_bindings.was_triggered, options[feature.mouseSkillKey])
