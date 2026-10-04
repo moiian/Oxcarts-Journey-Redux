@@ -1,6 +1,14 @@
 -- Oxcarts Journey Redux
 -- Runtime input, passenger seating, cart control, and protection services.
 
+-- Optional ownership handshake. No dependency when manual driving is absent.
+local driving_bus = rawget(_G, "DD2_OxcartControl") or { version = 1 }
+_G.DD2_OxcartControl = driving_bus
+local function external_driver_active()
+    return driving_bus.owner ~= nil and driving_bus.heartbeat ~= nil
+        and os.clock() - driving_bus.heartbeat < 2.0
+end
+
 local input_bindings = (function()
     local function read_enum_values(typename)
         local t = sdk.find_type_definition(typename)
@@ -1075,6 +1083,7 @@ end
 
 -- Build the active bindings from the selected cart-specific layout.
 local function bind_pawns_to_seats()
+    if external_driver_active() then return false end
     local ox = find_active_ox()
     if not ox then return end
     
@@ -1924,8 +1933,33 @@ local function enforce_seat_transforms(ox, position_only)
 end
 
 
+local journey_handoff = { suspended = false, restore_seats = false }
+driving_bus.journey = {
+    suspend = function()
+        journey_handoff.restore_seats = seating_lock_active
+        journey_handoff.suspended = true
+        seating_lock_active = false
+        detach_bound_characters()
+        for key in pairs(cart_action_filters) do cart_action_filters[key] = nil end
+        for key in pairs(frame_jobs) do frame_jobs[key] = nil end
+        cart_protection_range_active = false
+    end,
+    resume = function()
+        journey_handoff.suspended = false
+        last_clock_sample = os.clock()
+        cart_trip.rush_requested_at, cart_trip.rush_ack_until = nil, nil
+        cart_trip.walk_since, cart_trip.walk_angle, cart_trip.walk_turn = nil, nil, 0
+        if journey_handoff.restore_seats then
+            player = character_manager["<ManualPlayer>k__BackingField"]
+            bind_pawns_to_seats()
+        end
+        journey_handoff.restore_seats = false
+    end,
+}
+
 local input_poll_error_reported = false
 re.on_application_entry("UpdateHID", function()
+    if external_driver_active() then return end
     local success, err = pcall(input_bindings.update, watched_inputs)
     if not success and not input_poll_error_reported then
         input_poll_error_reported = true
@@ -1936,6 +1970,7 @@ re.on_application_entry("UpdateHID", function()
 end)
 
 re.on_frame(function()
+    if external_driver_active() then return end
     local ox = find_active_ox()
     observe_cart_pause(ox)
     if not cart_trip.pause.active and not cart_trip.pause.resume_pending then
@@ -1944,6 +1979,8 @@ re.on_frame(function()
 end)
 
 re.on_application_entry("LateUpdateBehavior", function()
+    if external_driver_active() then return end
+    if journey_handoff.suspended then driving_bus.journey.resume() end
     local ox = find_active_ox()
     observe_cart_pause(ox)
     player = character_manager["<ManualPlayer>k__BackingField"]
@@ -2354,6 +2391,7 @@ sdk.hook(
     sdk.find_type_definition("app.ActionManager"):get_method("requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)"),
     function(args)
         local this = sdk.to_managed_object(args[2])
+        if external_driver_active() then return end
         local owner = this:get_GameObject()
         if not owner:get_Valid() then return end      
         
@@ -2421,6 +2459,7 @@ sdk.hook(
     sdk.find_type_definition("app.HitController"):get_method("damageProc(app.HitController.DamageInfo)"),
     function(args)
         -- Driver protection depends on proximity, not passenger bindings.
+        if external_driver_active() then return end
         if not cart_protection_range_active then return end
         
         local damage_info = sdk.to_managed_object(args[3])
@@ -2465,6 +2504,7 @@ sdk.hook(
         thread.get_hook_storage().damage_info = damage_info
     end,
     function(retval)
+        if external_driver_active() then return retval end
         if not cart_protection_range_active then return end -- 仅在附近生效
         local damage_info = thread.get_hook_storage().damage_info
         if not damage_info then return end
@@ -2505,6 +2545,7 @@ sdk.hook(
 sdk.hook(
     sdk.find_type_definition("app.HitController"):get_method("updateDamage(app.HitController.DamageInfo, System.UInt32, System.Single, System.Boolean)"),
     function(args)
+        if external_driver_active() then return end
         if not cart_protection_range_active then return end -- 仅在附近生效
         local damage_info = sdk.to_managed_object(args[3])
         local receiver = damage_info["<DamageGameObject>k__BackingField"]
