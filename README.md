@@ -1,0 +1,28 @@
+# Oxcarts Journey Redux
+
+Dragon's Dogma 2 REFramework 牛车旅行模组。
+
+## 分支
+
+- `main`：正式版，保留牛车控制、随从座位、右侧技能栏、按键映射与保护功能，不包含调试界面或诊断脚本。
+- `debug`：保留调试界面、状态导出、动作测试和导航研究工具的可测试版本。
+
+## 安装
+
+将 `reframework/autorun` 中的 Lua 脚本放入游戏同名目录，需要 REFramework。
+正式版不要同时加载 debug 分支的 `Oxcarts Journey Diagnostics.lua`。
+
+## 正式版行为
+
+自动冲刺默认启用。玩家坐在牛车上、距当前目标站点及终点至少 25、牛持续移动且处于 Walk 超过 4 秒、累计转向不超过 60°时，自动进入 Dash。
+冲刺时长固定为 360 秒，目标站点减速距离固定为 15。上述四个参数不在菜单中显示，也不受旧配置覆盖。
+
+司机与牛车的非战斗覆盖默认启用。玩家距车体不超过 2.5 时，持续请求 `BattleManager.requestForceNormal(true)`，坐着与站着都生效；离开范围后停止请求。这是车体距离近似判定，站在车旁也可能触发，且 BattleManager 可能影响队伍。
+
+游戏暂停时不累计自动冲刺的稳定时间，也不执行自动解除随从控制。到站、离车、牛车损坏或翻车时仍按对应规则处理。
+
+左侧 Pawn Command 技能栏的文字修改功能不启用，但原有修饰键和按键操作保留。右侧坐姿技能栏保留。
+
+## 设置
+
+REFramework 菜单中可调整按键、座位预设、保护系数、自动冲刺和三个非战斗开关。设置保存到 `reframework/data/OxcartsJourneyRedux.json`，该本地配置不提交到仓库。

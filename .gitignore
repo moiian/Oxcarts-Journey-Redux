@@ -1,0 +1,5 @@
+*.bak
+*.log
+reframework/data/OxcartsJourney-diagnostic-*.json
+reframework/data/OxcartsJourney-recording-*.json
+reframework/data/OxcartsJourneyRedux.json
