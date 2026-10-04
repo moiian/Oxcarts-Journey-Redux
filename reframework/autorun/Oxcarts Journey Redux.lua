@@ -183,15 +183,7 @@ local npc_manager = sdk.get_managed_singleton("app.NPCManager")
 local scene_manager = sdk.get_native_singleton("via.SceneManager")
 local scene_manager_type = sdk.find_type_definition("via.SceneManager")
 local gui_get_object = sdk.find_type_definition("via.gui.Control"):get_method("getObject(System.String)")
-local gui_get_game_object = sdk.find_type_definition("via.gui.GUI"):get_method("get_GameObject")
-local gui_get_view = sdk.find_type_definition("via.gui.GUI"):get_method("get_View")
-local game_object_get_name = sdk.find_type_definition("via.GameObject"):get_method("get_Name")
-local control_set_color_scale = sdk.find_type_definition("via.gui.Control"):get_method("set_ColorScale")
-
-local gui_text_type = sdk.find_type_definition("via.gui.Text")
 local gui_color_type = sdk.find_type_definition("via.Color")
-local float4_type = sdk.find_type_definition("via.Float4")
-local pawn_order_gui_type = sdk.typeof("app.ui020401")
 local gui_base_type = sdk.typeof("app.GUIBase")
 
 local cart_action_filters = {}
@@ -328,9 +320,12 @@ local function vec_scale(v, s) return Vector3f.new(v.x * s, v.y * s, v.z * s) en
 local options = {
     DASH_DURATION = 360,
     AUTO_RUSH = true,
-    RECOVERY_WALK_SECONDS = 3.0,
-    RECOVERY_MAX_TURN = 15.0,
-    DESTINATION_BRAKE_DISTANCE = 8.75,
+    RECOVERY_WALK_SECONDS = 4.0,
+    RECOVERY_MAX_TURN = 60.0,
+    DESTINATION_BRAKE_DISTANCE = 15.0,
+    DRIVER_NONCOMBAT = true,
+    CART_NONCOMBAT = true,
+    PLAYER_NEAR_CART_NONCOMBAT = true,
     DISABLE_CAMERA = true,
     STATUS_IMMUNITY = true,
     PREVENT_INSTABREAKS = true,
@@ -535,11 +530,16 @@ local function normalize_presets()
     end
 end
 
+local fixed_cart_parameters = {
+    DASH_DURATION = true, RECOVERY_WALK_SECONDS = true,
+    RECOVERY_MAX_TURN = true, DESTINATION_BRAKE_DISTANCE = true,
+}
+
 local function load_options()
     local loaded = json.load_file("OxcartsJourneyRedux.json")
     if loaded then
         for k, v in pairs(loaded) do
-            if options[k] ~= nil then
+            if options[k] ~= nil and not fixed_cart_parameters[k] then
                 if k == "Presets" then
                     -- Accept both the original flat array and categorized data.
                     if #v > 0 and not v.Normal then
@@ -841,31 +841,6 @@ local seated_hotbar_paths = {
     ["LB"]           = "PNL_top/PNL_L01/PNL_txt", ["RB"] = "PNL_top/PNL_R01/PNL_txt",
 }
 
--- Left-side Pawn Command label replacement is intentionally disabled.
--- The input bindings below remain active; this block is kept only for a
--- possible future UI-path update.
---[[
-local dormant_left_hotbar_paths = {
-    ["D-Pad Up"] = {
-        getter = "get_PNL_Utxt",
-        paths = {"PNL_Pawncommand/PNL_PCcontrol/PNL_Upkey/PNL_Utxt", "PNL_Pawncommand/PNL_Upkey/PNL_Utxt", "PNL_Pawncommand/PNL_Upkey/PNL_txt"}
-    },
-    ["D-Pad Down"] = {
-        getter = "get_PNL_Dtxt",
-        paths = {"PNL_Pawncommand/PNL_PCcontrol/PNL_Downkey/PNL_Dtxt", "PNL_Pawncommand/PNL_Downkey/PNL_Dtxt", "PNL_Pawncommand/PNL_Downkey/PNL_txt"}
-    },
-    ["D-Pad Left"] = {
-        getter = "get_PNL_Ltxt",
-        paths = {"PNL_Pawncommand/PNL_PCcontrol/PNL_Leftkey/PNL_Ltxt", "PNL_Pawncommand/PNL_Leftkey/PNL_Ltxt", "PNL_Pawncommand/PNL_Leftkey/PNL_txt"}
-    },
-    ["D-Pad Right"] = {
-        getter = "get_PNL_Rtxt",
-        paths = {"PNL_Pawncommand/PNL_PCcontrol/PNL_Rightkey/PNL_Rtxt", "PNL_Pawncommand/PNL_Rightkey/PNL_Rtxt", "PNL_Pawncommand/PNL_Rightkey/PNL_txt"}
-    },
-}
-
-local dormant_left_hotbar_state = { objs = {}, orig = {}, color_state = {}, view = nil, view_addr = nil, view_orig_scale = nil }
-]]
 
 local function render_seated_hotbar_slot(button, message, is_held)
     if not button then return end
@@ -889,135 +864,6 @@ local function render_seated_hotbar_slot(button, message, is_held)
     end
 end
 
---[[ Disabled left-side Pawn Command UI implementation.
-local function as_text_control(obj)
-    if not obj then return nil end
-    local type_def = nil
-    pcall(function() type_def = obj:get_type_definition() end)
-    if type_def and type_def:is_a(gui_text_type) then return obj end
-    return nil
-end
-
-local function append_fixed_texts(result, seen, control)
-    if not control then return end
-
-    local function append_if_text(candidate)
-        local text_obj = as_text_control(candidate)
-        if not text_obj then return end
-        local addr = tostring(text_obj:get_address())
-        if not seen[addr] then
-            seen[addr] = true
-            table.insert(result, text_obj)
-        end
-    end
-
-    append_if_text(control)
-
-    -- The updated layout wraps each direction in PNL_*txt and then stores the
-    -- actual labels in one of these two named children. Resolve only these
-    -- fixed paths; never walk get_Child/get_Next from the draw callback.
-    for _, child_path in ipairs({"mtxt_Normal", "mtxt_ShortCut"}) do
-        local child = nil
-        pcall(function() child = gui_get_object:call(control, child_path) end)
-        append_if_text(child)
-    end
-end
-
-local function fetch_left_texts(base, descriptor)
-    local result, seen = {}, {}
-    if not base then return result end
-
-    if descriptor and descriptor.getter then
-        local direct = nil
-        pcall(function() direct = base:call(descriptor.getter) end)
-        append_fixed_texts(result, seen, direct)
-    end
-
-    if not base.Root then return result end
-    local paths = descriptor and descriptor.paths or {descriptor}
-    for _, path in ipairs(paths) do
-        local control = nil
-        pcall(function() control = gui_get_object:call(base.Root, path) end)
-        append_fixed_texts(result, seen, control)
-    end
-    return result
-end
-
-local function hijack_left_ui(state_table, text_obj, new_text, is_held)
-    if not text_obj then return end
-    local addr = tostring(text_obj:get_address())
-    if not state_table.objs[addr] then
-        state_table.orig[addr] = text_obj:get_Message() or ""
-        state_table.objs[addr] = text_obj
-    end
-    if text_obj:get_Message() ~= new_text then pcall(function() text_obj:set_Message(new_text) end) end
-    local target_color = is_held and 0x8FF0FBFF or 0xC8FFFFFF
-    if state_table.color_state[addr] ~= target_color then
-        local col = ValueType.new(gui_color_type)
-        col.rgba = target_color
-        pcall(function() text_obj:set_Color(col) end)
-        state_table.color_state[addr] = target_color
-    end
-end
-
-local function force_left_ui_view(state_table, gui_element)
-    if not gui_element then return end
-    local view = gui_get_view:call(gui_element)
-    if not view then return end
-    local view_addr = tostring(view:get_address())
-
-    if state_table.view_addr ~= view_addr then
-        state_table.view = view
-        state_table.view_addr = view_addr
-        state_table.view_orig_scale = nil
-        pcall(function()
-            local current = view:get_ColorScale()
-            if current then
-                local original = ValueType.new(float4_type)
-                original.x = current.x
-                original.y = current.y
-                original.z = current.z
-                original.w = current.w
-                state_table.view_orig_scale = original
-            end
-        end)
-    end
-
-    local visible_scale = ValueType.new(float4_type)
-    visible_scale.x = 1.0
-    visible_scale.y = 1.0
-    visible_scale.z = 1.0
-    visible_scale.w = 1.0
-    control_set_color_scale:call(view, visible_scale)
-end
-
-local function restore_left_ui(state_table)
-    for addr, obj in pairs(state_table.objs) do
-        if obj then
-            pcall(function()
-                local orig_msg = state_table.orig[addr]
-                if orig_msg and obj:get_Message() ~= orig_msg then obj:set_Message(orig_msg) end
-                local col = ValueType.new(gui_color_type)
-                col.rgba = 0xC8FFFFFF
-                obj:set_Color(col)
-            end)
-        end
-    end
-    state_table.objs = {}
-    state_table.orig = {}
-    state_table.color_state = {}
-    if state_table.view then
-        pcall(function()
-            if state_table.view_orig_scale then
-                control_set_color_scale:call(state_table.view, state_table.view_orig_scale)
-            end
-        end)
-    end
-    state_table.view = nil
-    state_table.view_addr = nil
-    state_table.view_orig_scale = nil
-end
-]]
 
 local function cancel_scheduled_actions(address)
     cart_action_filters[address] = nil
@@ -1378,9 +1224,6 @@ local function request_cart_locomotion(ox, nodeName, isDash, automatic)
         local reason = cart_destination_brake_reason(ox)
         if reason then
             local message = "dash request blocked: " .. reason
-            if cart_trip.stop_reason ~= message and OxcartsJourneyDiagnostics then
-                OxcartsJourneyDiagnostics.event("dash_request_blocked", { reason = reason })
-            end
             cart_trip.stop_reason = message
             return
         end
@@ -1415,15 +1258,15 @@ local function request_cart_locomotion(ox, nodeName, isDash, automatic)
     end
 end
 
-local cart_battle_debug = {
-    isDriverBattleMode = false, isAnyoneBattleMode = false,
-    address = nil, raw = {}, hooks = {}, hook_errors = {},
+local cart_battle_overrides = {
+    address = nil, hooks = {},
+    option_for_method = { isDriverBattleMode = "DRIVER_NONCOMBAT", isAnyoneBattleMode = "CART_NONCOMBAT" },
 }
 
-local function install_cart_battle_debug_hooks(status)
+local function install_cart_battle_overrides_hooks(status)
     local definition = status:get_type_definition()
     for _, name in ipairs({ "isDriverBattleMode", "isAnyoneBattleMode" }) do
-        if not cart_battle_debug.hooks[name] then
+        if not cart_battle_overrides.hooks[name] then
             local method_name = name
             local ok, err = pcall(function()
                 local method = definition:get_method(method_name)
@@ -1433,22 +1276,21 @@ local function install_cart_battle_debug_hooks(status)
                     local storage = thread.get_hook_storage()
                     storage["ojr_" .. method_name] = false
                     local object = sdk.to_managed_object(args[2])
-                    if object and object:get_address() == cart_battle_debug.address then
+                    if object and object:get_address() == cart_battle_overrides.address then
                         storage["ojr_" .. method_name] = true
                     end
                 end, function(retval)
                     if thread.get_hook_storage()["ojr_" .. method_name] then
-                        cart_battle_debug.raw[method_name] = (sdk.to_int64(retval) & 0xff) ~= 0
-                        if cart_battle_debug[method_name] then return sdk.to_ptr(0) end
+                        if options[cart_battle_overrides.option_for_method[method_name]] then return sdk.to_ptr(0) end
                     end
                     return retval
                 end)
-                cart_battle_debug.hooks[method_name] = true
+                cart_battle_overrides.hooks[method_name] = true
             end)
             if not ok then
-                cart_battle_debug.hook_errors[method_name] = tostring(err)
+                log.error("[Oxcarts Journey Redux] Battle override unavailable: " .. method_name .. ": " .. tostring(err))
                 -- Avoid retrying a failed native hook every frame.
-                cart_battle_debug.hooks[method_name] = "failed"
+                cart_battle_overrides.hooks[method_name] = "failed"
             end
         end
     end
@@ -1456,8 +1298,7 @@ end
 
 local function read_cart_status(ox)
     if not ox then
-        cart_battle_debug.address = nil
-        cart_battle_debug.raw = {}
+        cart_battle_overrides.address = nil
         return nil
     end
     local status = nil
@@ -1465,9 +1306,8 @@ local function read_cart_status(ox)
         status = npc_manager.OxcartManager:getStatus(ox:get_CharaID())
     end)
     local address = status and status:get_address() or nil
-    if address ~= cart_battle_debug.address then cart_battle_debug.raw = {} end
-    cart_battle_debug.address = address
-    if status then install_cart_battle_debug_hooks(status) end
+    cart_battle_overrides.address = address
+    if status then install_cart_battle_overrides_hooks(status) end
     return status
 end
 
@@ -1477,44 +1317,7 @@ local function status_is_true(status, method_name)
     return ok and value == true
 end
 
-local CART_DEBUG_FIELDS = {
-    { "Combat", { "isDriverBattleMode", "isAnyoneBattleMode" } },
-    { "Ticket / stopover", { "get_isPayMoney", "get_isPayMoneyTalk", "isPlayerRideNoPay", "getRouteIsStopNopay", "isExsistStopoverNowRoute", "get_get_StopIndex", "get_get_RoutineBack", "get_RunSeconds", "get_RunSecondsBan" } },
-    { "Movement / service", { "canMoveOperation", "isServiceContinue", "canResumeService", "isArrived", "isDead_Ox", "isBroken_OxCart" } },
-    { "Route proximity", { "isNearStopIndexPosition", "isNearAssultStopIndexPosition", "isNearStopoverIndexPosition(false)", "isNearStopoverIndexPosition(true)", "isNearFastTravelStopIndexPosition", "isNearFinalStopIndexPosition" } },
-    { "Route state", { "getDestinationID", "getServiceStatusID", "getProgressStatusID", "getImpossibleStatusID", "getStopIndexPosition", "getFastTravelStopIndexPosition", "getFinalStopIndexPosition" } },
-}
-
-local function cart_debug_value(status, method_name)
-    if not status then return "unavailable (no cart status)" end
-    local ok, value = pcall(function()
-        if method_name == "isNearStopoverIndexPosition(false)" then return status:call("isNearStopoverIndexPosition(System.Boolean)", false) end
-        if method_name == "isNearStopoverIndexPosition(true)" then return status:call("isNearStopoverIndexPosition(System.Boolean)", true) end
-        if method_name == "getStopIndexPosition" then return status:call("getStopIndexPosition()") end
-        return status:call(method_name)
-    end)
-    if not ok then return "call failed: " .. tostring(value) end
-    if value == nil then return "nil" end
-    if type(value) == "boolean" then return tostring(value) end
-    if method_name:find("Position", 1, true) then
-        local vector_ok, vector = pcall(function()
-            return string.format("(%.2f, %.2f, %.2f)", tonumber(value.x), tonumber(value.y), tonumber(value.z))
-        end)
-        if vector_ok then return vector end
-    end
-    return tostring(value)
-end
-
-local function cart_debug_world_position(transform)
-    if not transform then return "unavailable" end
-    local ok, position = pcall(function()
-        local value = transform:get_Position()
-        return string.format("X %.2f  Y %.2f  Z %.2f", tonumber(value.x), tonumber(value.y), tonumber(value.z))
-    end)
-    return ok and position or "unavailable"
-end
-
-local function cart_debug_action(character)
+local function get_cart_action(character)
     if not is_character_valid(character) then return "unavailable (character not loaded)" end
     local ok, action_name = pcall(function()
         local manager = character["<ActionManager>k__BackingField"] or character:get_ActionManager()
@@ -1526,137 +1329,7 @@ local function cart_debug_action(character)
     return action_name and tostring(action_name) or "unavailable (no layer 0 action)"
 end
 
-local function cart_debug_driver(status)
-    if not status then return nil, "no cart status" end
-    local last_reason = "no current driver"
-    for _, method_name in ipairs({ "getCurrentDriver", "getDriver" }) do
-        local ok, candidate = pcall(function() return status:call(method_name) end)
-        if ok and candidate then
-            local is_character = pcall(function() return candidate:get_CharaID() end)
-            if is_character and is_character_valid(candidate) then return candidate, method_name end
-            local is_id = type(candidate) == "number"
-            if not is_id then
-                pcall(function()
-                    local type_name = candidate:get_type_definition():get_full_name()
-                    is_id = type_name:find("CharaID", 1, true) ~= nil
-                end)
-            end
-            if is_id then
-                local resolved, character = pcall(function() return npc_manager:getCharacter(candidate) end)
-                if resolved and is_character_valid(character) then return character, method_name .. " ID" end
-            end
-            last_reason = method_name .. " returned an unresolved driver"
-        elseif not ok then
-            last_reason = method_name .. " call failed"
-        end
-    end
-    return nil, last_reason
-end
-
-local cart_debug_request_result = "No debug action requested"
-
-local function cart_debug_request_action(ox, name)
-    if not is_character_valid(ox) then
-        cart_debug_request_result = "unavailable (no active ox)"
-        return false, cart_debug_request_result
-    end
-    local ok, err = pcall(function()
-        local manager = ox["<ActionManager>k__BackingField"] or ox:get_ActionManager()
-        assert(manager, "no action manager")
-        cancel_scheduled_actions(ox:get_address())
-        cart_trip.rush_requested_at = nil
-        cart_trip.stopped_since = nil
-        cart_trip.auto_paused = name == "Wait" or name == "Jump"
-        cart_trip.departure_pending = false -- A manual recovery must use the full three-second window.
-        cart_trip.walk_since, cart_trip.walk_angle, cart_trip.walk_turn = nil, nil, 0
-        cart_trip.walk_position, cart_trip.walk_position_at = nil, nil
-        manager:requestActionCore(0, name, 0)
-    end)
-    cart_debug_request_result = ok and ("Requested " .. name .. " (AI may replace it)") or ("call failed: " .. tostring(err))
-    if OxcartsJourneyDiagnostics then
-        OxcartsJourneyDiagnostics.event("debug_action", { action = name, result = cart_debug_request_result })
-    end
-    return ok, cart_debug_request_result
-end
-
-local function cart_debug_objects()
-    local ox = find_active_ox()
-    local status = read_cart_status(ox)
-    local driver = cart_debug_driver(status)
-    local objects = { ox = ox, status = status, driver = driver, manager = npc_manager.OxcartManager }
-    if status then
-        pcall(function() objects.oxcart_ai = status["<oxcartAI>k__BackingField"] end)
-        pcall(function() objects.route = status.Route end)
-        pcall(function() objects.stopover = status:call("getStopoverNowRoute") end)
-    end
-    if ox then
-        pcall(function() objects.ox_action_manager = ox["<ActionManager>k__BackingField"] end)
-        pcall(function() objects.ox_controller = ox.EnemyCtrl end)
-        pcall(function() objects.ox_ch2 = ox.EnemyCtrl.Ch2 end)
-        pcall(function() objects.cart_controller = ox.EnemyCtrl.Ch2["<CachedOxcart>k__BackingField"] end)
-        pcall(function() objects.ox_navigation_ai = ox["<NavigationAI>k__BackingField"] end)
-        pcall(function() objects.ox_navigation_controller = ox["<NavigationController>k__BackingField"] end)
-        pcall(function() objects.ox_destination = ox["<DestinationController>k__BackingField"] end)
-        if objects.ox_navigation_ai then
-            for _, entry in ipairs({ { "ox_navigation", "<CachedNavigation>k__BackingField" },
-                { "ox_navigation_surface", "<CachedNavigationSurface>k__BackingField" },
-                { "ox_navigation_waypoint", "<CachedNavigationWaypoint>k__BackingField" },
-                { "ox_navigation_data", "<NavigationData>k__BackingField" },
-                { "ox_navigation_temp", "<NaviTempStatus>k__BackingField" } }) do
-                pcall(function() objects[entry[1]] = objects.ox_navigation_ai[entry[2]] end)
-            end
-        end
-    end
-    if driver then
-        pcall(function() objects.driver_action_manager = driver["<ActionManager>k__BackingField"] end)
-        pcall(function() objects.driver_human = driver["<Human>k__BackingField"] end)
-        pcall(function() objects.driver_navigation_ai = driver["<NavigationAI>k__BackingField"] end)
-        pcall(function() objects.driver_navigation_controller = driver["<NavigationController>k__BackingField"] end)
-        pcall(function() objects.driver_destination = driver["<DestinationController>k__BackingField"] end)
-    end
-    return objects
-end
-
-local player_battle_debug = { force_false = false, address = nil, raw = nil, hook = nil, error = nil }
-
-local function refresh_player_battle_hook()
-    local human
-    local valid = pcall(function()
-        local current_player = character_manager["<ManualPlayer>k__BackingField"]
-        if is_character_valid(current_player) then human = current_player["<Human>k__BackingField"] end
-    end)
-    local address
-    if valid and human then pcall(function() address = human:get_address() end) end
-    if address ~= player_battle_debug.address then player_battle_debug.raw = nil end
-    player_battle_debug.address = address
-    if not address or player_battle_debug.hook then return end
-    local ok, err = pcall(function()
-        local method = human:get_type_definition():get_method("get_IsBattleMode")
-        assert(method and method:get_num_params() == 0, "missing get_IsBattleMode()")
-        assert(method:get_return_type():get_name() == "Boolean", "get_IsBattleMode is not Boolean")
-        sdk.hook(method, function(args)
-            local storage = thread.get_hook_storage()
-            storage.ojr_player_battle = false
-            local object = sdk.to_managed_object(args[2])
-            if object and object:get_address() == player_battle_debug.address then
-                storage.ojr_player_battle = true
-            end
-        end, function(retval)
-            if thread.get_hook_storage().ojr_player_battle then
-                player_battle_debug.raw = (sdk.to_int64(retval) & 0xff) ~= 0
-                if player_battle_debug.force_false then return sdk.to_ptr(0) end
-            end
-            return retval
-        end)
-        player_battle_debug.hook = true
-    end)
-    if not ok then
-        player_battle_debug.error, player_battle_debug.hook = tostring(err), "failed"
-    end
-end
-
-local cart_normal_guard = { enabled = false, active = false, radius = 5.0,
-    next_at = nil, distance = nil, message = "Disabled" }
+local cart_normal_guard = { radius = 2.5, next_at = nil }
 
 local function player_cart_body_distance(ox)
     local ok, distance = pcall(function()
@@ -1672,17 +1345,14 @@ local function player_cart_body_distance(ox)
 end
 
 local function update_cart_normal_guard(ox)
-    if not cart_normal_guard.enabled then
-        cart_normal_guard.active, cart_normal_guard.next_at = false, nil
-        cart_normal_guard.message = "Disabled"
+    if not options.PLAYER_NEAR_CART_NONCOMBAT then
+        cart_normal_guard.next_at = nil
         return
     end
     if cart_normal_guard.next_at and runtime_clock < cart_normal_guard.next_at then return end
     cart_normal_guard.next_at = runtime_clock + 0.05
-    cart_normal_guard.distance = player_cart_body_distance(ox)
-    if not cart_normal_guard.distance or cart_normal_guard.distance > cart_normal_guard.radius then
-        cart_normal_guard.active = false
-        cart_normal_guard.message = cart_normal_guard.distance and "Outside cart-body radius" or "Player/cart body unavailable"
+    local distance = player_cart_body_distance(ox)
+    if not distance or distance > cart_normal_guard.radius then
         return
     end
     local ok, err = pcall(function()
@@ -1692,82 +1362,18 @@ local function update_cart_normal_guard(ox)
         -- Renew its short hold while nearby; never request a forced battle on exit.
         manager:call("requestForceNormal(System.Boolean)", true)
     end)
-    cart_normal_guard.active = ok
-    cart_normal_guard.message = ok and "Renewing requestForceNormal(true) within 5 of cart body"
-        or ("Request failed: " .. tostring(err))
-    if not ok then cart_normal_guard.next_at = runtime_clock + 1.0 end
-end
-
-local battle_manager_test = { pending = nil, message = "No BattleManager test requested", trace = {} }
-local BATTLE_MANAGER_DEBUG_METHODS = {
-    "get_BattleMode", "get_PureBattleMode", "get_IsBattleMode",
-    "get_IsNormalMode", "get_IsForceNormalMode", "get_IsForceCombatMode", "get_CombatEnemyCount",
-}
-
-local function battle_manager_snapshot()
-    local manager
-    pcall(function() manager = sdk.get_managed_singleton("app.BattleManager") end)
-    local result = { found = manager ~= nil }
-    for _, name in ipairs(BATTLE_MANAGER_DEBUG_METHODS) do
-        local ok, value = pcall(function() return manager:call(name .. "()") end)
-        if ok and value ~= nil then result[name] = value end
-    end
-    pcall(function() result.player_timer = player["<Human>k__BackingField"].TimerBattleMode end)
-    result.player_original_battle = player_battle_debug.raw
-    return result, manager
-end
-
-local function record_battle_manager_test(label)
-    local state = battle_manager_snapshot()
-    table.insert(battle_manager_test.trace, label .. ": mode=" .. tostring(state.get_BattleMode)
-        .. " / pure=" .. tostring(state.get_PureBattleMode)
-        .. " / forced normal=" .. tostring(state.get_IsForceNormalMode)
-        .. " / player timer=" .. tostring(state.player_timer))
-    if OxcartsJourneyDiagnostics then
-        OxcartsJourneyDiagnostics.event("battle_manager_test", { phase = label, state = state })
-    end
-end
-
-local function update_battle_manager_test()
-    -- Run native requests on the gameplay update, not inside UI drawing.
-    if battle_manager_test.pending then
-        local command = battle_manager_test.pending
-        battle_manager_test.pending = nil
-        battle_manager_test.trace = {}
-        battle_manager_test.started_at, battle_manager_test.sample = nil, nil
-        record_battle_manager_test("before " .. command.label)
-        local _, manager = battle_manager_snapshot()
-        local ok, err = pcall(function()
-            assert(manager, "BattleManager unavailable")
-            if command.update_only then
-                manager:call("requestForceUpdate()")
-            else
-                manager:call("requestForceNormal(System.Boolean)", command.argument)
-            end
-        end)
-        battle_manager_test.message = ok and ("Called " .. command.label .. "; observing 3 seconds")
-            or ("Test call failed: " .. tostring(err))
-        if ok then
-            battle_manager_test.started_at, battle_manager_test.sample = runtime_clock, 1
-            record_battle_manager_test("immediate")
+    if not ok then
+        if not cart_normal_guard.error_reported then
+            log.error("[Oxcarts Journey Redux] Non-combat request failed: " .. tostring(err))
+            cart_normal_guard.error_reported = true
         end
-    end
-    if battle_manager_test.started_at then
-        local delays = { 0.1, 0.5, 1.0, 3.0 }
-        while battle_manager_test.sample <= #delays
-            and runtime_clock - battle_manager_test.started_at >= delays[battle_manager_test.sample] do
-            record_battle_manager_test(tostring(delays[battle_manager_test.sample]) .. "s")
-            battle_manager_test.sample = battle_manager_test.sample + 1
-        end
-        if battle_manager_test.sample > #delays then
-            battle_manager_test.started_at = nil
-            battle_manager_test.message = "Observation complete; a successful call is not proof of leaving combat"
-        end
+        cart_normal_guard.next_at = runtime_clock + 1.0
+    else
+        cart_normal_guard.error_reported = false
     end
 end
 
 local function player_battle_state()
-    refresh_player_battle_hook()
     local ok, value = pcall(function()
         if not is_character_valid(player) then return nil end
         local human = player["<Human>k__BackingField"]
@@ -1776,12 +1382,6 @@ local function player_battle_state()
     if ok and type(value) == "boolean" then return value end
     return nil
 end
-
--- Never rotate a root transform here: the cart and cow have separate connection
--- parts, and a transform write can invalidate that connection. Resolve CowChara
--- explicitly and request its movement/facing targets through Character instead.
-local ox_heading_test = { address = nil, cow_address = nil, base_angle = nil, degrees = 0,
-    message = "Capture cow heading before testing" }
 
 local function resolve_steering_cow(ox)
     local ok, cow = pcall(function()
@@ -1793,286 +1393,9 @@ local function resolve_steering_cow(ox)
     return cow
 end
 
-local function cow_steering_snapshot(ox)
-    local cow = resolve_steering_cow(ox)
-    local result = { available = cow ~= nil }
-    if not cow then return result end
-    result.address = cow:get_address()
-    result.same_as_action_root = result.address == ox:get_address()
-    result.action = cart_debug_action(cow)
-    pcall(function() result.name = cow:get_GameObject():call("get_Name()") end)
-    pcall(function() result.angle = cow["<PosRotContext>k__BackingField"]:call("get_AngleYDeg()") end)
-    pcall(function() result.target_front = cow:call("get_TargetFrontAngleDeg()") end)
-    pcall(function() result.target_move = cow:call("get_TargetMoveAngleDeg()") end)
-    pcall(function() result.connected = ox.EnemyCtrl.Ch2:call("get_IsConnectOxcart()") end)
-    return result
-end
-
-local function capture_ox_heading(ox)
-    local ok, err = pcall(function()
-        local cow = resolve_steering_cow(ox)
-        if not cow then error("Connection parts / CowChara unavailable; no root-transform fallback") end
-        local context = cow["<PosRotContext>k__BackingField"]
-        local angle = context and context:call("get_AngleYDeg()")
-        if type(angle) ~= "number" or angle ~= angle or math.abs(angle) == math.huge then
-            error("Cow heading unreadable")
-        end
-        ox_heading_test.address = ox:get_address()
-        ox_heading_test.cow_address = cow:get_address()
-        ox_heading_test.base_angle = angle
-        ox_heading_test.degrees = 0
-    end)
-    if not ok then
-        ox_heading_test.address, ox_heading_test.cow_address, ox_heading_test.base_angle = nil, nil, nil
-    end
-    ox_heading_test.message = ok and "Cow heading captured; negative = left, positive = right" or tostring(err)
-    return ok
-end
-
-local function apply_ox_heading(ox, degrees)
-    local ok, err = pcall(function()
-        local cow = resolve_steering_cow(ox)
-        if not cow or ox:get_address() ~= ox_heading_test.address
-            or cow:get_address() ~= ox_heading_test.cow_address
-            or ox_heading_test.base_angle == nil then error("Cow changed; capture heading again") end
-        -- Reverse the old slider convention. Keep offsets relative to capture,
-        -- and let the normal movement code perform rotation instead of teleporting.
-        local target = (ox_heading_test.base_angle - degrees + 180) % 360 - 180
-        cow:call("set_TargetFrontAngleDeg(System.Single)", target)
-        cow:call("set_TargetMoveAngleDeg(System.Single)", target)
-        ox_heading_test.degrees = degrees
-    end)
-    ox_heading_test.message = ok and string.format("Requested cow turn %.1f degrees once (AI may override)", degrees) or tostring(err)
-    if ok and OxcartsJourneyDiagnostics then
-        OxcartsJourneyDiagnostics.event("cow_heading_request", { degrees = degrees,
-            target_angle = (ox_heading_test.base_angle - degrees + 180) % 360 - 180,
-            cow_address = ox_heading_test.cow_address })
-    end
-    return ok
-end
-
-local function cart_debug_snapshot()
-    local objects = cart_debug_objects()
-    local result = {
-        ox_action = cart_debug_action(objects.ox), driver_action = cart_debug_action(objects.driver),
-        mod_dash_requested = cart_trip.rush_requested_at ~= nil, states = {}, battle = {}, positions = {},
-        ticket = { paid_seen = cart_trip.paid_seen, paid_current = cart_trip.paid_current,
-            loss_handled = cart_trip.ticket_loss_handled, last_stop_reason = cart_trip.stop_reason },
-    }
-    result.player_battle = player_battle_state()
-    result.player_battle_override = { force_false = player_battle_debug.force_false,
-        raw = player_battle_debug.raw, hook = player_battle_debug.hook, error = player_battle_debug.error }
-    result.battle_manager = battle_manager_snapshot()
-    result.cart_normal_guard = { enabled = cart_normal_guard.enabled, active = cart_normal_guard.active,
-        radius = cart_normal_guard.radius, body_distance = player_cart_body_distance(objects.ox),
-        message = cart_normal_guard.message }
-    result.battle_manager_test = { message = battle_manager_test.message, trace = battle_manager_test.trace }
-    pcall(function() result.player_battle_timer = player["<Human>k__BackingField"].TimerBattleMode end)
-    result.ticket.intermediate_arrival = cart_trip.intermediate_arrival_result
-    result.cow_steering = cow_steering_snapshot(objects.ox)
-    result.autodrive = { paused = cart_trip.auto_paused, reason = cart_trip.auto_reason,
-        menu_paused = cart_trip.pause.active, pause_resume_pending = cart_trip.pause.resume_pending,
-        pause_result = cart_trip.pause.last_result,
-        player_distance = player_cart_distance(objects.ox),
-        player_seated = player_is_physically_seated(objects.ox),
-        walk_seconds = cart_trip.walk_since and (runtime_clock - cart_trip.walk_since) or 0,
-        turn_degrees = cart_trip.walk_turn, destination = cart_trip.destination }
-    for _, group in ipairs(CART_DEBUG_FIELDS) do
-        for _, name in ipairs(group[2]) do result.states[name] = cart_debug_value(objects.status, name) end
-    end
-    if objects.ox_ch2 then
-        local ok, value = pcall(function() return objects.ox_ch2:call("isRun") end)
-        result.states.ox_isRun = ok and tostring(value) or "call failed"
-        local disabled_ok, disabled = pcall(function() return objects.ox_ch2:call("IsDisableAIOxcart()") end)
-        result.states.ox_IsDisableAIOxcart = disabled_ok and tostring(disabled) or ("call failed: " .. tostring(disabled))
-    end
-    for _, name in ipairs({ "isDriverBattleMode", "isAnyoneBattleMode" }) do
-        result.battle[name] = { force_false = cart_battle_debug[name],
-            raw = cart_battle_debug.raw[name], hook = cart_battle_debug.hooks[name],
-            error = cart_battle_debug.hook_errors[name] }
-    end
-    for _, name in ipairs({ "ox", "driver" }) do
-        local character = objects[name]
-        if character then
-            pcall(function()
-                local transform = character:get_Transform()
-                result.positions[name] = cart_debug_world_position(transform)
-                local ok, value = pcall(function() return transform:get_UniversalPosition() end)
-                if ok and value then
-                    result.positions[name .. "_universal"] = string.format("(%.2f, %.2f, %.2f)", tonumber(value.x), tonumber(value.y), tonumber(value.z))
-                end
-            end)
-        end
-    end
-    pcall(function() result.paused = gui_manager:isPausedGUI() end)
-    return result
-end
-
--- The optional diagnostic autorun reads this bridge; it holds no character wrappers.
-OxcartsJourneyDebug = {
-    snapshot = cart_debug_snapshot, objects = cart_debug_objects,
-    -- Restricted diagnostic entry: same action path as the existing debug buttons.
-    request_ox_action = function(name, expected_address)
-        if name ~= "Wait" and name ~= "Walk" then return false, "Diagnostic action not allowed" end
-        local ox = find_active_ox()
-        if not is_character_valid(ox) then return false, "No active ox" end
-        if ox:get_address() ~= expected_address then return false, "Active ox changed" end
-        return cart_debug_request_action(ox, name)
-    end,
-}
-local function draw_cart_debug()
-    local ox = find_active_ox()
-    local status = read_cart_status(ox)
-    imgui.text("Active ox: " .. (ox and "found" or "unavailable"))
-    imgui.text("Cart status: " .. (status and "found" or "unavailable"))
-    local ox_transform = nil
-    if ox then pcall(function() ox_transform = ox:get_Transform() end) end
-    imgui.text("Ox world position: " .. cart_debug_world_position(ox_transform))
-    local cart_transform = nil
-    if ox then pcall(function() cart_transform = find_cart_body(ox) end) end
-    imgui.text("Cart body world position: " .. cart_debug_world_position(cart_transform))
-    imgui.separator()
-    imgui.text("Live actions (layer 0)")
-    imgui.text("Ox action: " .. cart_debug_action(ox))
-    local driver, driver_source = cart_debug_driver(status)
-    imgui.text("Driver: " .. (driver and "found via " or "unavailable: ") .. driver_source)
-    imgui.text("Driver action: " .. cart_debug_action(driver))
-    imgui.text("Mod dash request active: " .. tostring(cart_trip.rush_requested_at ~= nil))
-    imgui.text("Paid passenger latch: " .. tostring(cart_trip.paid_seen) .. " | Current paid: " .. tostring(cart_trip.paid_current))
-    imgui.text("Last automatic stop: " .. (cart_trip.stop_reason or "none"))
-    imgui.text("Auto rush: " .. (cart_trip.auto_reason or "waiting") .. " | Paused: " .. tostring(cart_trip.auto_paused))
-    imgui.text("Player seated (cart controller): " .. tostring(player_is_physically_seated(ox)))
-    imgui.text("Player/cart distance: " .. tostring(player_cart_distance(ox) or "unavailable"))
-    imgui.text("Menu paused: " .. tostring(cart_trip.pause.active) .. " | Resume pending: " .. tostring(cart_trip.pause.resume_pending))
-    if cart_trip.pause.last_result then imgui.text("Pause resume: " .. cart_trip.pause.last_result) end
-    imgui.text(string.format("Stable walk: %.1f s | Accumulated turn: %.1f degrees",
-        cart_trip.walk_since and (runtime_clock - cart_trip.walk_since) or 0, cart_trip.walk_turn or 0))
-    local destination = cart_trip.destination or {}
-    imgui.text("Destination: " .. (destination.kind or "unavailable") .. " | Distance: " .. tostring(destination.distance or "unavailable")
-        .. " | Final distance: " .. tostring(destination.final_distance or "unavailable"))
-    if destination.note or destination.error then imgui.text(destination.note or destination.error) end
-    if destination.final_position then
-        local p = destination.final_position
-        imgui.text(string.format("Final target (universal): %.2f, %.2f, %.2f", p.x, p.y, p.z))
-    end
-    if imgui.button("Resume automatic rush") then cart_trip.auto_paused = false end
-    for _, name in ipairs({ "Walk", "Run", "Wait", "Jump" }) do
-        if imgui.button("Request " .. name .. "###ox_debug_" .. name) then cart_debug_request_action(ox, name) end
-        if name ~= "Jump" then imgui.same_line() end
-    end
-    imgui.text(cart_debug_request_result)
-    imgui.separator()
-    imgui.text("Cow steering test (target request; no transform writes)")
-    local cow = resolve_steering_cow(ox)
-    if ox_heading_test.address and (not cow or ox:get_address() ~= ox_heading_test.address
-        or cow:get_address() ~= ox_heading_test.cow_address) then
-        ox_heading_test.address, ox_heading_test.cow_address, ox_heading_test.base_angle = nil, nil, nil
-        ox_heading_test.message = "Cow changed; capture heading again"
-    end
-    if imgui.button("Capture CowChara heading (0 degrees)") then capture_ox_heading(ox) end
-    if ox_heading_test.base_angle ~= nil then
-        local changed, degrees = imgui.slider_float("Left (-) / Right (+) degrees", ox_heading_test.degrees, -180, 180)
-        if changed then apply_ox_heading(ox, degrees) end
-    end
-    imgui.text(ox_heading_test.message)
-    local steering = cow_steering_snapshot(ox)
-    if steering.available then
-        imgui.text("CowChara: " .. (steering.name or "unnamed") .. " | Same as action root: " .. tostring(steering.same_as_action_root))
-        imgui.text("Cow heading: " .. tostring(steering.angle or "unavailable")
-            .. " | Front target: " .. tostring(steering.target_front or "unavailable")
-            .. " | Move target: " .. tostring(steering.target_move or "unavailable"))
-        imgui.text("Cow/cart connected: " .. (steering.connected == nil and "unavailable" or tostring(steering.connected)))
-    else
-        imgui.text("CowChara unavailable; steering disabled")
-    end
-    refresh_player_battle_hook()
-    imgui.separator()
-    local c_player_battle, v_player_battle = imgui.checkbox("Force player get_IsBattleMode = false", player_battle_debug.force_false)
-    if c_player_battle then
-        player_battle_debug.force_false = v_player_battle
-        if OxcartsJourneyDiagnostics then
-            OxcartsJourneyDiagnostics.event("player_battle_override", { enabled = v_player_battle })
-        end
-    end
-    local player_battle = player_battle_state()
-    imgui.text("Player battle: " .. (player_battle == nil and "unavailable" or tostring(player_battle)))
-    imgui.text("Original player battle: " .. (player_battle_debug.raw == nil and "unavailable" or tostring(player_battle_debug.raw)))
-    if player_battle_debug.hook ~= true then
-        imgui.text("Player battle hook unavailable: " .. (player_battle_debug.error or "no player Human"))
-    end
-    imgui.text("Player only; return override, not a battle timer reset; default OFF")
-    local battle_timer = nil
-    pcall(function() battle_timer = player["<Human>k__BackingField"].TimerBattleMode end)
-    imgui.text("Player TimerBattleMode: " .. tostring(battle_timer or "unavailable"))
-    imgui.separator()
-    imgui.text("BattleManager non-combat controls (may affect party)")
-    local c_cart_normal, v_cart_normal = imgui.checkbox("Keep non-combat within 5 of cart body", cart_normal_guard.enabled)
-    if c_cart_normal then
-        cart_normal_guard.enabled, cart_normal_guard.active, cart_normal_guard.next_at = v_cart_normal, false, nil
-        cart_normal_guard.message = v_cart_normal and "Enabled; waiting for gameplay update" or "Disabled"
-        if OxcartsJourneyDiagnostics then
-            OxcartsJourneyDiagnostics.event("cart_normal_guard", { enabled = v_cart_normal, radius = cart_normal_guard.radius })
-        end
-    end
-    imgui.text("Player/cart BODY distance: " .. tostring(player_cart_body_distance(ox) or "unavailable"))
-    imgui.text("Non-combat guard: " .. cart_normal_guard.message)
-    imgui.text("Standing or seated; includes nearby ground; BattleManager may affect party")
-    imgui.text("For one-shot tests: turn OFF continuous guard and player return override")
-    for _, argument in ipairs({ false, true }) do
-        local label = "requestForceNormal(" .. tostring(argument) .. ")"
-        if imgui.button("Test " .. label) then
-            battle_manager_test.pending = { label = label, argument = argument }
-            battle_manager_test.message = "Queued " .. label .. "; close paused game menu to execute"
-        end
-    end
-    if imgui.button("Test requestForceUpdate only") then
-        battle_manager_test.pending = { label = "requestForceUpdate()", update_only = true }
-        battle_manager_test.message = "Queued requestForceUpdate(); close paused game menu to execute"
-    end
-    local manager_state = battle_manager_snapshot()
-    imgui.text("BattleManager: " .. (manager_state.found and "found" or "unavailable"))
-    for _, name in ipairs(BATTLE_MANAGER_DEBUG_METHODS) do
-        local value = manager_state[name]
-        imgui.text(name .. ": " .. (value == nil and "unavailable" or tostring(value)))
-    end
-    imgui.text(battle_manager_test.message)
-    for _, line in ipairs(battle_manager_test.trace) do imgui.text(line) end
-    imgui.text("Intermediate arrival: " .. (cart_trip.intermediate_arrival_result or "not observed"))
-    imgui.separator()
-    imgui.text("Battle return overrides (current cart only; default OFF)")
-    for _, name in ipairs({ "isDriverBattleMode", "isAnyoneBattleMode" }) do
-        if cart_battle_debug.hooks[name] == true then
-            local changed, value = imgui.checkbox("Force " .. name .. " = false", cart_battle_debug[name])
-            if changed then
-                cart_battle_debug[name] = value
-                if OxcartsJourneyDiagnostics then OxcartsJourneyDiagnostics.event("battle_override", { method = name, enabled = value }) end
-            end
-            local effective = cart_debug_value(status, name)
-            local raw = cart_battle_debug.raw[name]
-            imgui.text("Original: " .. (raw == nil and "unavailable" or tostring(raw)) .. " | Effective: " .. effective)
-        else
-            imgui.text(name .. " hook unavailable: " .. (cart_battle_debug.hook_errors[name] or "no cart status"))
-        end
-    end
-    if OxcartsJourneyDiagnostics then
-        local ok, err = pcall(OxcartsJourneyDiagnostics.draw_ui)
-        if not ok then imgui.text("Diagnostics error: " .. tostring(err)) end
-    end
-    if not status then return end
-    for _, group in ipairs(CART_DEBUG_FIELDS) do
-        imgui.separator()
-        imgui.text(group[1])
-        for _, method_name in ipairs(group[2]) do
-            imgui.text(method_name .. ": " .. cart_debug_value(status, method_name))
-        end
-    end
-end
-
 local function stop_cart_rush(ox, reason, exit_action, keep_live_action, force_exit_action)
     if reason then
-        local changed = cart_trip.stop_reason ~= reason or cart_trip.rush_requested_at ~= nil
         cart_trip.stop_reason = reason
-        if changed and OxcartsJourneyDiagnostics then OxcartsJourneyDiagnostics.event("automatic_stop", { reason = reason }) end
     end
     if ox then
         pcall(function() cancel_scheduled_actions(ox:get_address()) end)
@@ -2111,7 +1434,6 @@ local function release_passengers_for_cart_stop()
 end
 
 local function release_pawns_at_intermediate_stop(reason)
-    local released = 0
     -- Keep the player's seat binding; remove only followers and their queued locks.
     for i = #pending_ai_lock, 1, -1 do
         if pending_ai_lock[i] ~= player then table.remove(pending_ai_lock, i) end
@@ -2129,13 +1451,9 @@ local function release_pawns_at_intermediate_stop(reason)
             end
             -- Damage protection follows the binding, so removal restores it too.
             table.remove(seat_bindings, i)
-            released = released + 1
         end
     end
     if #seat_bindings == 0 then seating_lock_active = false end
-    if released > 0 and OxcartsJourneyDiagnostics then
-        OxcartsJourneyDiagnostics.event("followers_released", { reason = reason, count = released })
-    end
 end
 
 local function check_intermediate_arrival(ox, status)
@@ -2221,7 +1539,7 @@ local function finish_cart_pause(ox)
     local pause = cart_trip.pause
     if not pause.resume_pending then return true end
     if pause.restore_dispatched then
-        if cart_debug_action(ox):lower() == "dash" then
+        if get_cart_action(ox):lower() == "dash" then
             pause.resume_pending = false
             pause.last_result = "previous rush restored; no three-second restart"
             return true
@@ -2256,7 +1574,7 @@ local function finish_cart_pause(ox)
     if pause.was_rushing and cart_trip.rush_requested_at and not blocked and not cart_trip.auto_paused then
         local remaining = options.DASH_DURATION - (runtime_clock - pause.rush_started_at)
         if remaining > 0 then
-            if cart_debug_action(ox):lower() == "dash" then
+            if get_cart_action(ox):lower() == "dash" then
                 suppress_action_interrupts(ox, remaining)
             else
                 -- Restoring an existing rush is not a new auto-start: the player
@@ -2300,7 +1618,7 @@ local function update_auto_rush(ox, status, destination, sitting)
         cart_trip.auto_reason = blocked
         return
     end
-    if cart_debug_action(ox):lower() ~= "walk" then
+    if get_cart_action(ox):lower() ~= "walk" then
         if cart_trip.walk_since then cart_trip.departure_pending = false end
         reset_auto_walk(); cart_trip.auto_reason = "waiting for Walk"; return
     end
@@ -2332,7 +1650,6 @@ local function update_auto_rush(ox, status, destination, sitting)
         request_cart_locomotion(ox, "Dash", true, true)
         if cart_trip.rush_requested_at then
             cart_trip.auto_reason = "automatic rush: " .. reason
-            if OxcartsJourneyDiagnostics then OxcartsJourneyDiagnostics.event("automatic_rush", { reason = reason }) end
         end
     end
 end
@@ -2368,7 +1685,7 @@ local function update_cart_trip(ox, physically_sitting)
         cart_trip.auto_reason = "player/cart distance exceeds 20"
         local paid_ok, paid = pcall(function() return status and status:call("get_isPayMoney") end)
         if paid_ok and paid == true then
-            local force_wait = cart_debug_action(ox):lower() ~= "wait"
+            local force_wait = get_cart_action(ox):lower() ~= "wait"
             stop_cart_rush(ox, "paid player left cart beyond 20", "Wait", false, force_wait)
         end
         return
@@ -2385,7 +1702,7 @@ local function update_cart_trip(ox, physically_sitting)
         return
     end
     if physically_sitting == nil then physically_sitting = player_is_physically_seated(ox) end
-    local action = cart_debug_action(ox):lower()
+    local action = get_cart_action(ox):lower()
     -- Give a newly queued Dash time to enter its action; an older request is not
     -- evidence that the actor is still dashing after the engine has selected Walk.
     if action == "walk" and cart_trip.rush_requested_at
@@ -2590,48 +1907,6 @@ local function enforce_seat_transforms(ox, position_only)
     end
 end
 
---[[ Disabled left-side Pawn Command UI draw hook.
-local function update_left_hotbar_labels(ui020401Base)
-    for _, feature in pairs(action_bindings) do
-        if feature.isUI and feature.modifyUiKey then
-            local descriptor = dormant_left_hotbar_paths[feature.modifyUiKey]
-            if descriptor then
-                local text_objects = fetch_left_texts(ui020401Base, descriptor)
-                for _, text_obj in ipairs(text_objects) do
-                    hijack_left_ui(dormant_left_hotbar_state, text_obj, feature.name, alternate_binding_is_down(feature))
-                end
-            end
-        end
-    end
-end
-
--- This former draw callback is retained only as inactive reference code.
-re.on_pre_gui_draw_element(function(element, context)
-    local success, force_draw = pcall(function()
-        local go = gui_get_game_object:call(element)
-        if not go or game_object_get_name:call(go) ~= "ui020401" then return false end
-
-        local ox = find_active_ox()
-        local should_show = modifier_is_down() and ox and player_is_near_cart(ox) or false
-        if not should_show then
-            restore_left_ui(dormant_left_hotbar_state)
-            return false
-        end
-
-        local ui020401Base = go:call("getComponent(System.Type)", pawn_order_gui_type)
-        if not ui020401Base then
-            ui020401Base = go:call("getComponent(System.Type)", gui_base_type)
-        end
-        if not ui020401Base then return false end
-
-        force_left_ui_view(dormant_left_hotbar_state, element)
-        update_left_hotbar_labels(ui020401Base)
-        return true
-    end)
-
-    if success and force_draw then return true end
-end)
-]]
 
 local input_poll_error_reported = false
 re.on_application_entry("UpdateHID", function()
@@ -2645,7 +1920,6 @@ re.on_application_entry("UpdateHID", function()
 end)
 
 re.on_frame(function()
-    refresh_player_battle_hook()
     local ox = find_active_ox()
     observe_cart_pause(ox)
     if not cart_trip.pause.active and not cart_trip.pause.resume_pending then
@@ -2679,7 +1953,6 @@ re.on_application_entry("LateUpdateBehavior", function()
         return
     end
     if not finish_cart_pause(ox) then return end
-    update_battle_manager_test()
     update_cart_normal_guard(ox)
 
     if #pending_ai_lock > 0 then
@@ -2762,9 +2035,6 @@ re.on_application_entry("LateUpdateBehavior", function()
     enforce_seat_transforms(ox, false)
 
     local modifier_held = modifier_is_down()
-
-    -- Left-side Pawn Command UI replacement is disabled. Modifier-key actions
-    -- are still processed below and are independent from the HUD rewrite.
 
     local scene = nil
     if sitting then
@@ -2894,17 +2164,14 @@ re.on_draw_ui(function()
         
         if imgui.tree_node("General Settings") then
             local changed = false
-            local c_dash, v_dash = imgui.drag_int("Oxcart Dash Duration (s)", options.DASH_DURATION, 1, 1, 9999)
-            if c_dash then options.DASH_DURATION = v_dash; changed = true end
             local c_auto, v_auto = imgui.checkbox("Automatic rush", options.AUTO_RUSH)
             if c_auto then options.AUTO_RUSH = v_auto; cart_trip.auto_paused = false; changed = true end
-            imgui.text("Automatic rush requires seated player and destination distance >= 25")
-            local c_recovery, v_recovery = imgui.drag_float("Stable Walk before rush (s)", options.RECOVERY_WALK_SECONDS, 0.1, 3.0, 10.0)
-            if c_recovery then options.RECOVERY_WALK_SECONDS = v_recovery; changed = true end
-            local c_turn, v_turn = imgui.drag_float("Stable Walk max accumulated turn (degrees)", options.RECOVERY_MAX_TURN, 1, 1, 90)
-            if c_turn then options.RECOVERY_MAX_TURN = v_turn; changed = true end
-            local c_brake, v_brake = imgui.drag_float("Destination braking distance", options.DESTINATION_BRAKE_DISTANCE, 0.25, 1, 35)
-            if c_brake then options.DESTINATION_BRAKE_DISTANCE = v_brake; changed = true end
+            local c_driver_battle, v_driver_battle = imgui.checkbox("Keep driver out of combat", options.DRIVER_NONCOMBAT)
+            if c_driver_battle then options.DRIVER_NONCOMBAT = v_driver_battle; changed = true end
+            local c_cart_battle, v_cart_battle = imgui.checkbox("Keep cart out of combat", options.CART_NONCOMBAT)
+            if c_cart_battle then options.CART_NONCOMBAT = v_cart_battle; changed = true end
+            local c_player_battle, v_player_battle = imgui.checkbox("Keep non-combat within 2.5 of cart body", options.PLAYER_NEAR_CART_NONCOMBAT)
+            if c_player_battle then options.PLAYER_NEAR_CART_NONCOMBAT = v_player_battle; cart_normal_guard.next_at = nil; changed = true end
             
             imgui.spacing()
             imgui.text("Damage Multipliers")
@@ -2965,11 +2232,6 @@ re.on_draw_ui(function()
                 draw_dual_bind("Switch Preset", "Key_PadSkillSwitch", "Key_MouseSkillSwitch")
                 imgui.tree_pop()
             end
-            imgui.tree_pop()
-        end
-
-        if imgui.tree_node("Oxcart Status Debug") then
-            draw_cart_debug()
             imgui.tree_pop()
         end
 
@@ -3125,9 +2387,6 @@ sdk.hook(
         for _,fn in pairs(cart_action_filters) do
             local currentSkip = fn(data,args)
             skip = skip or currentSkip
-        end
-        if OxcartsJourneyDiagnostics then
-            pcall(OxcartsJourneyDiagnostics.action_requested, char:get_address(), nodeName, data.priority, data.layer, skip)
         end
         if skip then return sdk.PreHookResult.SKIP_ORIGINAL end
     end
