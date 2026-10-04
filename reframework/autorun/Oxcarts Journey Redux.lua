@@ -199,6 +199,8 @@ local MOUSE_WALK_FLAG = 1946159104
 
 -- Each cart family keeps an independent preset cursor.
 local preset_cursor = { Normal = 1, Rainy = 1, Wealthy = 1 }
+local last_sit_preset = {}
+local last_sit_request_at = nil
 
 math.randomseed(os.time())
 
@@ -355,15 +357,11 @@ local options = {
     Key_MouseModifyTeleport = {type = 'keyboard', key = 'Alpha3'},
     Key_PadModifyStand = {type = 'gamepad', key = 'LDown'},
     Key_MouseModifyStand = {type = 'keyboard', key = 'Alpha4'},
-    Key_PadModifySwitch = {type = 'gamepad', key = 'RTrigBottom'},
-    Key_MouseModifySwitch = {type = 'keyboard', key = 'Alpha5'},
     
     Key_PadSkillTeleport = {type = 'gamepad', key = 'RLeft'},
     Key_MouseSkillTeleport = {type = 'keyboard', key = 'E'},
     Key_PadSkillStand = {type = 'gamepad', key = 'Cancel'},
     Key_MouseSkillStand = {type = 'keyboard', key = 'F'},
-    Key_PadSkillSwitch = {type = 'gamepad', key = 'RTrigBottom'},
-    Key_MouseSkillSwitch = {type = 'keyboard', key = 'LControl'},
     
     Key_PadSkillDash = {type = 'gamepad', key = 'RTrigTop'},
     Key_MouseSkillDash = {type = 'keyboard', key = 'None'},--已硬编码鼠标左右键
@@ -1118,29 +1116,33 @@ local function bind_pawns_to_seats()
     end
     
     seating_lock_active = true
+    return true
 end
 
-local function cycle_seat_preset()
+local function sit_with_next_preset()
+    -- Coalesce overlapping modifier/skill bindings within one gameplay frame.
+    if last_sit_request_at == runtime_clock then return end
     local ox = find_active_ox()
     if not ox then return end
-    
     local cart_transform = find_cart_body(ox)
+    if not cart_transform then return end
     local cat = classify_cart_model(cart_transform)
-    
     local presets = options.Presets[cat]
     if not presets or #presets == 0 then return end
-    
-    local start_idx = preset_cursor[cat] or 1
-    local next_idx = start_idx
+    -- First manual Sit starts at the first enabled preset for this cart family.
+    -- Later manual Sits advance; automatic reseating keeps the current preset.
+    local next_idx = last_sit_preset[cat] and (preset_cursor[cat] or 1) or 0
     for i = 1, #presets do
-        next_idx = next_idx + 1
-        if next_idx > #presets then next_idx = 1 end
+        next_idx = next_idx % #presets + 1
         if presets[next_idx].enabled then
             preset_cursor[cat] = next_idx
-            break
+            if bind_pawns_to_seats() then
+                last_sit_preset[cat] = next_idx
+                last_sit_request_at = runtime_clock
+            end
+            return
         end
     end
-    bind_pawns_to_seats()
 end
 
 local action_bindings = {
@@ -1163,8 +1165,8 @@ local action_bindings = {
         name = "Pawns Sit",      
         padSkillKey = "Key_PadSkillTeleport", mouseSkillKey = "Key_MouseSkillTeleport",
         padModifyKey = "Key_PadModifyTeleport", mouseModifyKey = "Key_MouseModifyTeleport",
-        skillAction = bind_pawns_to_seats,   
-        modifyAction = bind_pawns_to_seats,   
+        skillAction = sit_with_next_preset,
+        modifyAction = sit_with_next_preset,
         isUI = true
     },
     Stand = {
@@ -1175,15 +1177,6 @@ local action_bindings = {
         skillAction = release_passengers_from_skill,
         modifyAction = release_passengers_from_modifier,
         isUI = true
-    },
-    SwitchPreset = {
-        skillUiKey = "RT", modifyUiKey = nil,
-        name = "Switch Position",
-        padSkillKey = "Key_PadSkillSwitch", mouseSkillKey = "Key_MouseSkillSwitch",
-        padModifyKey = "Key_PadModifySwitch", mouseModifyKey = "Key_MouseModifySwitch",
-        skillAction = cycle_seat_preset,
-        modifyAction = cycle_seat_preset,
-        isUI = true 
     }
 }
 
@@ -2214,7 +2207,6 @@ re.on_draw_ui(function()
                 draw_dual_bind("Oxcart Walk", "Key_PadModifyWalk", "Key_MouseModifyWalk")
                 draw_dual_bind("Pawns Sit/TP", "Key_PadModifyTeleport", "Key_MouseModifyTeleport")
                 draw_dual_bind("Pawns Stand", "Key_PadModifyStand", "Key_MouseModifyStand")
-                draw_dual_bind("Switch Preset", "Key_PadModifySwitch", "Key_MouseModifySwitch")
                 imgui.tree_pop()
             end
             
@@ -2223,7 +2215,6 @@ re.on_draw_ui(function()
                 draw_dual_bind("Oxcart Walk", "Key_PadSkillWalk", "Key_MouseSkillWalk")
                 draw_dual_bind("Pawns Sit/TP", "Key_PadSkillTeleport", "Key_MouseSkillTeleport")
                 draw_dual_bind("Pawns Stand", "Key_PadSkillStand", "Key_MouseSkillStand")
-                draw_dual_bind("Switch Preset", "Key_PadSkillSwitch", "Key_MouseSkillSwitch")
                 imgui.tree_pop()
             end
             imgui.tree_pop()
@@ -2246,7 +2237,6 @@ re.on_draw_ui(function()
             end
             imgui.text("Current Active Preset: " .. current_preset_name)
             
-            if imgui.button("Force Switch Now") then cycle_seat_preset() end
             imgui.separator()
             
             local cat_list = {

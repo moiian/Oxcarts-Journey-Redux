@@ -27,8 +27,10 @@ Dragon's Dogma 2 REFramework 牛车旅行模组。
 
 REFramework 菜单依次为 `Keybind Settings`、`Seating Position Presets`、`Other Settings`。可调整按键、座位预设与保护系数；自动冲刺和三个非战斗功能固定启用，不显示开关，旧配置也不能关闭它们。
 
-修饰键默认为 `LShift`；修饰键配合数字键 `1/2/3/4/5` 分别执行冲刺、Walk、随从坐下/传送、随从起身和切换预设。手柄对应 `LUp/LLeft/LRight/LDown/RTrigBottom`，修饰键为 `LTrigBottom`。
+修饰键默认为 `LShift`；修饰键配合数字键 `1/2/3/4` 分别执行冲刺、Walk、随从坐下/传送和随从起身。手柄对应 `LUp/LLeft/LRight/LDown`，修饰键为 `LTrigBottom`。独立的 Switch 功能及其键位已移除。
 
-右侧坐姿技能栏：冲刺使用鼠标左键，Walk 使用鼠标右键，随从坐下/传送使用 `E`，起身使用 `F`，切换预设使用左 `Ctrl`。鼠标左右键沿用原有固定实现。`Restore default keybinds` 恢复全部默认键位，取消正在等待的映射输入，不改座位预设或保护系数。已有自定义键位保留，需点击该按钮才能恢复新默认值。
+右侧坐姿技能栏：冲刺使用鼠标左键，Walk 使用鼠标右键，随从坐下/传送使用 `E`，起身使用 `F`。鼠标左右键沿用原有固定实现。每种车型第一次手动 Sit 使用第一个启用的座位预设；之后每次 Sit 顺序循环到下一个启用的预设，跳过停用项。自动重新固定座位不会推进预设。同一帧重叠的 Sit 输入只处理一次。
+
+`Restore default keybinds` 恢复全部默认键位，取消正在等待的映射输入，不改座位预设或保护系数。已有自定义键位保留，需点击该按钮才能恢复新默认值。旧配置中的 Switch 键位不再加载，下一次保存配置时会移除。
 
 设置保存到 `reframework/data/OxcartsJourneyRedux.json`，该本地配置不提交到仓库。
