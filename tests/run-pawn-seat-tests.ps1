@@ -19,7 +19,11 @@ $bindEnd = $source.IndexOf('local action_bindings =', $bindStart)
 $detachStart = $source.IndexOf('-- Detach every bound character', $physicsEnd)
 $switchImplementation = $source.Substring($physicsStart,$physicsEnd-$physicsStart) + "`n" + $source.Substring($detachStart,$animationEnd-$detachStart) + "`n" + $source.Substring($bindStart,$bindEnd-$bindStart)
 $switchFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'preset-switch.lua') -Raw
-$switchFixture.Replace('-- IMPLEMENTATION --',$switchImplementation) | python -X utf8 $LuaChecker --execute
+$actionHookStart = $source.IndexOf('sdk.hook(' + "`n" + '    sdk.find_type_definition("app.ActionManager")')
+if ($actionHookStart -lt 0) { $actionHookStart = $source.IndexOf('sdk.hook(' + "`r`n" + '    sdk.find_type_definition("app.ActionManager")') }
+$actionHookEnd = $source.IndexOf('sdk.hook(', $actionHookStart + 10)
+if ($actionHookStart -lt 0 -or $actionHookEnd -lt 0) { throw 'Action hook boundaries not found' }
+$switchFixture.Replace('-- IMPLEMENTATION --',$switchImplementation).Replace('-- ACTION HOOK --',$source.Substring($actionHookStart,$actionHookEnd-$actionHookStart)) | python -X utf8 $LuaChecker --execute
 if ($LASTEXITCODE -ne 0) { throw 'OJR preset switching tests failed' }
 $bodyStart = $source.IndexOf('local function player_cart_body_distance(')
 $bodyEnd = $source.IndexOf('local function update_cart_normal_guard(', $bodyStart)

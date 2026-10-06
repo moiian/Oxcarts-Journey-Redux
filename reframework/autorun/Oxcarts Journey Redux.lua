@@ -970,6 +970,27 @@ end
 -- Pawn root transforms, universal position and physical controller must agree.
 -- Player positions remain owned by the existing native passenger interaction.
 local pawn_seat_physics = {}
+pawn_seat_physics.issuing = {}
+function pawn_seat_physics.request_pose_action(character, node, priority)
+    local manager = character["<ActionManager>k__BackingField"]
+    assert(manager, "Pawn ActionManager unavailable")
+    local previous = pawn_seat_physics.issuing[character]
+    pawn_seat_physics.issuing[character] = true
+    local ok, err = pcall(function() manager:requestActionCore(priority, node, 0) end)
+    pawn_seat_physics.issuing[character] = previous
+    if not ok then error(err) end
+end
+function pawn_seat_physics.blocks_pose_action(character, node, layer)
+    if character == player or layer ~= 0 or pawn_seat_physics.issuing[character]
+        or external_driver_active() or not seating_lock_active
+        or cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused() then return false end
+    for _, binding in ipairs(seat_bindings) do
+        if binding.char == character then
+            return node ~= binding.pose_node
+        end
+    end
+    return false
+end
 pawn_seat_physics.pending_release = rawget(_G, "OJR_PendingSeatRelease") or {}
 _G.OJR_PendingSeatRelease = pawn_seat_physics.pending_release
 function pawn_seat_physics.prepare(character)
@@ -1056,20 +1077,33 @@ end)
 -- preset requires a stable pose.
 local function start_seated_animation(char, seat_spec, force_anim_node)
     if not char or not char:get_Valid() then return end
+    local is_pawn = char ~= player
+    if is_pawn then
+        assert(set_fsm_enabled(char, true), "Cannot enable pawn FSM for seated pose")
+        for _, binding in ipairs(seat_bindings) do
+            if binding.char == char then
+                if seat_spec.useDirectMotion and not force_anim_node then binding.pose_node = nil
+                else binding.pose_node = force_anim_node or seat_spec.anim end
+            end
+        end
+    end
     
     if seat_spec.useDirectMotion and not force_anim_node then
-        if seat_spec.freezeFsm then
+        if not is_pawn and seat_spec.freezeFsm then
             set_fsm_enabled(char, false)
         end
-        pcall(function()
+        local ok, err = pcall(function()
             local motion = char:get_Motion()
+            if is_pawn then assert(motion, "Pawn Motion unavailable") end
             if motion then
                 local layer = motion:getLayer(0)
+                if is_pawn then assert(layer, "Pawn base motion layer unavailable") end
                 if layer then
                     layer:call("changeMotion(System.UInt32, System.UInt32, System.Single, System.Single, via.motion.InterpolationMode, via.motion.InterpolationCurve)", seat_spec.bankID or 0, seat_spec.motionID or 0, 0.0, 12.0, 1, 1)
                 end
             end
         end)
+        if not ok and is_pawn then error(err) end
     else
         local action_manager = nil
         pcall(function() action_manager = char["<ActionManager>k__BackingField"] end)
@@ -1079,16 +1113,25 @@ local function start_seated_animation(char, seat_spec, force_anim_node)
                 set_fsm_enabled(char, true) 
             end
             
-            pcall(function()
-                -- Priority 1 keeps the requested pose alive until the deferred
-                -- controller lock runs on the following frame.
-                action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0)
+            local ok, err = pcall(function()
+                -- Pawns keep their FSM enabled; the pose guard rejects competing actions.
+                if is_pawn then
+                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, 1)
+                else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
             end)
+            if not ok then error(err) end
             
-            if seat_spec.freezeFsm then
+            if not is_pawn and seat_spec.freezeFsm then
                 table.insert(pending_ai_lock, char)
             end
-        end
+        elseif is_pawn then error("Pawn ActionManager unavailable") end
+    end
+end
+
+function pawn_seat_physics.step_pose_wait(binding)
+    if binding.pose_wait_until and runtime_clock >= binding.pose_wait_until then
+        start_seated_animation(binding.char, binding.seat_spec)
+        binding.pose_wait_until = nil
     end
 end
 
@@ -1160,7 +1203,7 @@ local function release_passengers_from_modifier()
 end
 
 -- Build the active bindings from the selected cart-specific layout.
-local function bind_pawns_to_seats()
+local function bind_pawns_to_seats(wait_before_pose)
     if external_driver_active() then return false end
     local ox = find_active_ox()
     if not ox then return end
@@ -1184,6 +1227,12 @@ local function bind_pawns_to_seats()
     cart_trip.arrival_was_false = false
     cart_trip.last_check_at = nil
 
+    local previous_pawns = {}
+    if wait_before_pose then
+        for _, binding in ipairs(seat_bindings) do
+            if binding.char ~= player then previous_pawns[binding.char] = true end
+        end
+    end
     detach_bound_characters() 
 
     if preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
@@ -1198,9 +1247,24 @@ local function bind_pawns_to_seats()
         if pawn_character and pawn_character:get_Valid() and pawn_character ~= player then
             local physics_ready, physics_error = pcall(pawn_seat_physics.prepare, pawn_character)
             if physics_ready then
-                start_seated_animation(pawn_character, preset.pawns[i])
+                local binding = {char = pawn_character, seat_spec = preset.pawns[i]}
+                local ok, err = pcall(function()
+                    if previous_pawns[pawn_character] then
+                        assert(set_fsm_enabled(pawn_character, true), "Cannot enable pawn FSM before Wait")
+                        binding.pose_node, binding.pose_wait_until = "Wait", runtime_clock + 0.3
+                        pawn_seat_physics.request_pose_action(pawn_character, "Wait", 0)
+                    else
+                        start_seated_animation(pawn_character, preset.pawns[i])
+                        if not preset.pawns[i].useDirectMotion then binding.pose_node = preset.pawns[i].anim end
+                    end
+                end)
                 local next_idle = preset.pawns[i].randomIdle and (runtime_clock + math.random() * 25 + 5) or nil
-                table.insert(seat_bindings, {char = pawn_character, seat_spec = preset.pawns[i], next_idle_time = next_idle})
+                binding.next_idle_time = next_idle
+                if ok then table.insert(seat_bindings, binding)
+                else
+                    pawn_seat_physics.finish(pawn_character)
+                    log.error("[Oxcarts Journey Redux] Pawn pose request failed: " .. tostring(err))
+                end
             else
                 log.error("[Oxcarts Journey Redux] Pawn seat skipped: " .. tostring(physics_error))
             end
@@ -1212,6 +1276,9 @@ local function bind_pawns_to_seats()
 end
 
 local function sit_with_next_preset()
+    for _, binding in ipairs(seat_bindings) do
+        if binding.pose_wait_until then return end
+    end
     -- Coalesce overlapping modifier/skill bindings within one gameplay frame.
     if last_sit_request_at == runtime_clock then return end
     local ox = find_active_ox()
@@ -1228,7 +1295,7 @@ local function sit_with_next_preset()
         next_idx = next_idx % #presets + 1
         if presets[next_idx].enabled then
             preset_cursor[cat] = next_idx
-            if bind_pawns_to_seats() then
+            if bind_pawns_to_seats(true) then
                 -- A deliberate modifier Sit while standing must survive the
                 -- automatic Walk/Wait release check on subsequent frames.
                 cart_trip.manual_standing_seats = not player_is_physically_seated(ox)
@@ -2026,13 +2093,26 @@ local function enforce_seat_transforms(ox, position_only)
             if not pose_ok then
                 if not position_only then pawn_seat_physics.remove(i) end
             elseif not position_only then
-                -- Keep the AI lock authoritative for the whole ride. Some
-                -- pawn controllers may be rebuilt after the seat animation.
-                if seat_spec.freezeFsm then set_fsm_enabled(character, false) end
+                -- Keep pawn AI running; lock requests rather than its entire FSM.
+                if character ~= player then
+                    local ok, err = pcall(function()
+                        assert(set_fsm_enabled(character, true), "Cannot keep pawn FSM enabled")
+                        pawn_seat_physics.step_pose_wait(binding)
+                    end)
+                    if not ok then
+                        binding.pose_failed = true
+                        pawn_seat_physics.remove(i)
+                        log.error("[Oxcarts Journey Redux] Pawn pose lock failed: " .. tostring(err))
+                    end
+                elseif seat_spec.freezeFsm then set_fsm_enabled(character, false) end
 
-                if seat_spec.randomIdle and binding.next_idle_time and runtime_clock >= binding.next_idle_time then
+                if not binding.pose_failed and not binding.pose_wait_until and seat_spec.randomIdle and binding.next_idle_time and runtime_clock >= binding.next_idle_time then
                     local random_anim = passenger_idle_nodes[math.random(1, #passenger_idle_nodes)]
-                    start_seated_animation(character, seat_spec, random_anim)
+                    local ok, err = pcall(start_seated_animation, character, seat_spec, random_anim)
+                    if not ok and character ~= player then
+                        pawn_seat_physics.remove(i)
+                        log.error("[Oxcarts Journey Redux] Pawn random pose failed: " .. tostring(err))
+                    end
                     binding.next_idle_time = runtime_clock + (math.random() * 35 + 10)
                 end
             end
@@ -2143,7 +2223,7 @@ re.on_application_entry("LateUpdateBehavior", function()
         for _, char in ipairs(current_refreeze) do
             local bound = false
             for _, binding in ipairs(seat_bindings) do
-                if binding.char == char and binding.seat_spec.freezeFsm then bound = true; break end
+                if binding.char == char and char == player and binding.seat_spec.freezeFsm then bound = true; break end
             end
             if bound and is_character_valid(char) and not set_fsm_enabled(char, false) then
                 table.insert(pending_ai_lock, char)
@@ -2298,14 +2378,16 @@ re.on_application_entry("LateUpdateBehavior", function()
     end
 end)
 
-local function draw_seat_editor(label, seat_spec)
+local function draw_seat_editor(label, seat_spec, is_player)
     if imgui.tree_node(label) then
         local c0, v0 = imgui.checkbox("Use Ox Anchor", seat_spec.useOxAnchor)
         if c0 then seat_spec.useOxAnchor = v0; persist_options() end
         
         imgui.same_line()
-        local c_fsm, v_fsm = imgui.checkbox("Freeze AI", seat_spec.freezeFsm)
-        if c_fsm then seat_spec.freezeFsm = v_fsm; persist_options() end
+        if is_player then
+            local c_fsm, v_fsm = imgui.checkbox("Freeze AI", seat_spec.freezeFsm)
+            if c_fsm then seat_spec.freezeFsm = v_fsm; persist_options() end
+        else imgui.text("Pose lock (FSM enabled)") end
         
         imgui.same_line()
         local c_idle, v_idle = imgui.checkbox("Random Idle", seat_spec.randomIdle)
@@ -2453,7 +2535,7 @@ re.on_draw_ui(function()
                             if tp_changed then preset.teleportPlayer = tp_val; persist_options() end
                             
                             if preset.teleportPlayer then
-                                draw_seat_editor("Player Parameters", preset.player)
+                                draw_seat_editor("Player Parameters", preset.player, true)
                             end
                             
                             for p_idx = 1, 3 do
@@ -2562,6 +2644,10 @@ sdk.hook(
         data.layer = sdk.to_int64(args[5]) & 0xffffffff
         data.priority = sdk.to_int64(args[3]) & 0xffffffff
         data.node = nodeName
+
+        if pawn_seat_physics.blocks_pose_action(char, nodeName, data.layer) then
+            return sdk.PreHookResult.SKIP_ORIGINAL
+        end
         
         local skip = false
         for _,fn in pairs(cart_action_filters) do

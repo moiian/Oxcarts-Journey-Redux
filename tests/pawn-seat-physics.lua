@@ -43,6 +43,7 @@ local roster={[pawn]=true}
 local function collect_party_pawns() return {pawn},roster end
 
 -- IMPLEMENTATION --
+pawn_seat_physics.step_pose_wait=function() end
 
 enforce_seat_transforms(nil,false)
 assert(#calls==4,'Pawn physics synchronization missing or applied to player')
@@ -60,6 +61,7 @@ assert(#calls==4 and pawn:get_Transform().position==p,'Release teleported pawn o
 calls={};pawn_seat_physics.release(player)
 assert(#calls==0,'Release changed native player physics')
 pawn['<FallInfo>k__BackingField']=nil
+fsm_calls={}
 local unchanged=vec(99,99,99);pawn:get_Transform().position=unchanged
 pending_ai_lock={pawn,player,pawn}
 calls={};enforce_seat_transforms(nil,false);enforce_seat_transforms(nil,false)
