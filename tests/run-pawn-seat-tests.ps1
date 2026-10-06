@@ -33,3 +33,18 @@ if ($bodyStart -lt 0 -or $bodyEnd -lt 0 -or $releaseStart -lt 0 -or $releaseEnd 
 $distanceFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'pawn-release-distance.lua') -Raw
 $distanceFixture.Replace('-- BODY DISTANCE --',$source.Substring($bodyStart,$bodyEnd-$bodyStart)).Replace('-- RELEASE CHECK --',$source.Substring($releaseStart,$releaseEnd-$releaseStart)) | python -X utf8 $LuaChecker --execute
 if ($LASTEXITCODE -ne 0) { throw 'OJR pawn release distance tests failed' }
+
+# Obsolete fields may only occur in the loader cleanup, never in runtime or UI.
+if ($source -match 'set_fsm_enabled|get_character_fsm|pending_ai_lock|retry_release|Freeze AI|Use Ox Anchor|Pose lock \(FSM') { throw 'Obsolete FSM/anchor control remains' }
+$presetStart = $source.IndexOf('local function get_default_normal_presets(')
+$presetEnd = $source.IndexOf('local fixed_cart_parameters =', $presetStart)
+$saveStart = $source.IndexOf('local function persist_options(')
+$saveEnd = $source.IndexOf('local function restore_default_key_bindings(', $saveStart)
+$copyStart = $source.IndexOf('                            local src = options.Presets[cat][1]')
+$copyEnd = $source.IndexOf('                            persist_options()', $copyStart)
+$editorStart = $source.IndexOf('local function draw_seat_editor(')
+$editorEnd = $source.IndexOf('re.on_draw_ui(', $editorStart)
+if (@($presetStart,$presetEnd,$saveStart,$saveEnd,$copyStart,$copyEnd,$editorStart,$editorEnd) -contains -1) { throw 'Preset compatibility test boundaries not found' }
+$compatibilityFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'preset-compatibility.lua') -Raw
+$compatibilityFixture.Replace('-- PRESET IMPLEMENTATION --',$source.Substring($presetStart,$presetEnd-$presetStart)).Replace('-- SAVE IMPLEMENTATION --',$source.Substring($saveStart,$saveEnd-$saveStart)).Replace('-- ADD PRESET IMPLEMENTATION --',$source.Substring($copyStart,$copyEnd-$copyStart)).Replace('-- EDITOR IMPLEMENTATION --',$source.Substring($editorStart,$editorEnd-$editorStart)) | python -X utf8 $LuaChecker --execute
+if ($LASTEXITCODE -ne 0) { throw 'OJR legacy preset compatibility tests failed' }

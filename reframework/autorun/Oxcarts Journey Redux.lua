@@ -223,48 +223,10 @@ local passenger_idle_nodes = {
     "LivSitChairLoseieus"
 }
 
--- Pawn controller suspension is deferred by one frame after requesting an
--- animation so the action request can finish before AI updates are paused.
-local pending_ai_lock = {}
-
 local function is_character_valid(character)
     if not character then return false end
     local success, valid = pcall(function() return character:get_Valid() end)
     return success and valid or false
-end
-
--- Prefer reflected backing fields because generated Lua method members may be
--- absent even while the underlying managed methods remain callable.
-local function get_character_fsm(character)
-    if not character then return nil end
-
-    local human = character["<Human>k__BackingField"]
-    if human and human.Fsm then
-        return human.Fsm
-    end
-
-    local action_manager = character:get_ActionManager()
-    return action_manager and action_manager.Fsm or nil
-end
-
-local function set_fsm_enabled(character, enabled)
-    if not character then return false end
-
-    local is_loading = false
-    if gui_manager then
-        pcall(function() is_loading = gui_manager:get_IsLoadGui() end)
-    end
-    if is_loading then return false end
-
-    local updated = false
-    local success = pcall(function()
-        local fsm = get_character_fsm(character)
-        if fsm then
-            fsm:set_Enabled(enabled)
-            updated = true
-        end
-    end)
-    return success and updated
 end
 
 -- Release bindings left by a previous hot reload. The legacy key is read once
@@ -277,11 +239,11 @@ if previous_seat_bindings then
         if type(item) == "table" and item.char then char = item.char end
         if is_character_valid(char) then
             pcall(function() char:get_Transform():set_Parent(nil) end)
-            set_fsm_enabled(char, true)
         end
     end
 end
 _G.BetterOxcarts_BoundPawns = nil
+_G.OJR_PendingSeatRelease = nil
 _G.OJR_SeatBindings = {}
 
 local seating_lock_active = false
@@ -408,41 +370,41 @@ local function get_default_normal_presets()
         {
             name = "Facing Each Other", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -2.5, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -2.5, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         },
         {
             name = "Side by Side", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         },
         {
             name = "Look Around", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 1.35, z = -2.0, y = 0.77, lookX = 1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.6, y = 0.23, lookX = 1.0, lookZ = 1.0, anim = "SitOnChairCrossArmStart", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 1.35, z = -2.0, y = 0.77, lookX = 1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = 0.85, z = -4.6, y = 0.23, lookX = 1.0, lookZ = 1.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         },
         {
             name = "Sit on the Edge", enabled = true,
             teleportPlayer = true,
-            player = { x = 1.25, z = -2.55, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 1.25, z = -2.55, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 1.25, z = -2.0, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", useOxAnchor = false, freezeFsm = true, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -1.25, z = -3.35, y = 0.80, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -4.2, y = 0.25, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 1.25, z = -2.0, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -1.25, z = -3.35, y = 0.80, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -4.2, y = 0.25, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         }
     }
@@ -453,21 +415,21 @@ local function get_default_rainy_presets()
         {
             name = "Rainy - Side by Side", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 0.85, z = -3.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 0.85, z = -3.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         },
         {
             name = "Rainy - Facing Each Other", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = -1.0, z = -2.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.95, z = -4.1, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = -1.0, z = -2.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.95, z = -4.1, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         }
     }
@@ -478,11 +440,11 @@ local function get_default_wealthy_presets()
         {
             name = "Luxury - Facing Each Other", enabled = true,
             teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", useOxAnchor = false, freezeFsm = false, randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
+            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
             pawns = {
-                { x = 0.45, z = -3.15, y = 0.23, lookX = 0.0, lookZ = -1.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.5, z = -1.2, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.5, z = -1.25, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", useOxAnchor = false, freezeFsm = true, randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
+                { x = 0.45, z = -3.15, y = 0.23, lookX = 0.0, lookZ = -1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = -0.5, z = -1.2, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
+                { x = 0.5, z = -1.25, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
             }
         }
     }
@@ -523,8 +485,8 @@ local function normalize_presets()
             preset.player.lookX = preset.player.lookX or 0.0
             preset.player.lookZ = preset.player.lookZ or 0.0
             preset.player.anim = preset.player.anim or "SitOnChairActions"
-            if type(preset.player.useOxAnchor) ~= "boolean" then preset.player.useOxAnchor = false end
-            if type(preset.player.freezeFsm) ~= "boolean" then preset.player.freezeFsm = false end
+            -- Obsolete seat flags are discarded without changing saved coordinates.
+            preset.player.useOxAnchor, preset.player.freezeFsm = nil, nil
             if type(preset.player.randomIdle) ~= "boolean" then preset.player.randomIdle = false end
             if type(preset.player.useDirectMotion) ~= "boolean" then preset.player.useDirectMotion = false end
             preset.player.bankID = preset.player.bankID or 0
@@ -539,8 +501,7 @@ local function normalize_presets()
                 preset.pawns[i].lookX = preset.pawns[i].lookX or 0.0
                 preset.pawns[i].lookZ = preset.pawns[i].lookZ or 0.0
                 preset.pawns[i].anim = preset.pawns[i].anim or "SitOnChairActions"
-                if type(preset.pawns[i].useOxAnchor) ~= "boolean" then preset.pawns[i].useOxAnchor = false end
-                if type(preset.pawns[i].freezeFsm) ~= "boolean" then preset.pawns[i].freezeFsm = false end
+                preset.pawns[i].useOxAnchor, preset.pawns[i].freezeFsm = nil, nil
                 if type(preset.pawns[i].randomIdle) ~= "boolean" then preset.pawns[i].randomIdle = false end
                 if type(preset.pawns[i].useDirectMotion) ~= "boolean" then preset.pawns[i].useDirectMotion = false end
                 preset.pawns[i].bankID = preset.pawns[i].bankID or 0
@@ -991,8 +952,6 @@ function pawn_seat_physics.blocks_pose_action(character, node, layer)
     end
     return false
 end
-pawn_seat_physics.pending_release = rawget(_G, "OJR_PendingSeatRelease") or {}
-_G.OJR_PendingSeatRelease = pawn_seat_physics.pending_release
 function pawn_seat_physics.prepare(character)
     local context = character["<PosRotContext>k__BackingField"]
     local terrain = character["<AdjustTerrain>k__BackingField"]
@@ -1015,19 +974,10 @@ function pawn_seat_physics.release(character)
         pcall(pawn_seat_physics.synchronize, character, character:get_Transform())
     end
 end
-function pawn_seat_physics.cancel_lock(character)
-    for i = #pending_ai_lock, 1, -1 do
-        if pending_ai_lock[i] == character then table.remove(pending_ai_lock, i) end
-    end
-end
 function pawn_seat_physics.finish(character)
-    pawn_seat_physics.cancel_lock(character)
     if not is_character_valid(character) then return end
     pawn_seat_physics.release(character)
     pcall(function() character:get_Transform():set_Parent(nil) end)
-    if not set_fsm_enabled(character, true) then
-        pawn_seat_physics.pending_release[character] = true
-    end
 end
 function pawn_seat_physics.remove(index)
     local binding = table.remove(seat_bindings, index)
@@ -1044,24 +994,11 @@ function pawn_seat_physics.prune_party()
         end
     end
 end
-function pawn_seat_physics.retry_release()
-    for char in pairs(pawn_seat_physics.pending_release) do
-        local bound = false
-        for _, binding in ipairs(seat_bindings) do
-            if binding.char == char then bound = true; break end
-        end
-        if bound or not is_character_valid(char) or set_fsm_enabled(char, true) then
-            pawn_seat_physics.pending_release[char] = nil
-        end
-    end
-end
 
 
 -- Detach every bound character and resume normal pawn control.
 local function detach_bound_characters()
     cart_trip.manual_standing_seats = false
-    -- A queued next-frame lock must not freeze a passenger again after release.
-    pending_ai_lock = {}
     for _, binding in ipairs(seat_bindings) do
         pawn_seat_physics.finish(binding.char)
     end
@@ -1073,13 +1010,11 @@ re.on_script_reset(function()
     detach_bound_characters()
 end)
 
--- Start the requested seated motion, then suspend the pawn controller when the
--- preset requires a stable pose.
+-- Start the requested motion; bound pawns reject competing action requests.
 local function start_seated_animation(char, seat_spec, force_anim_node)
     if not char or not char:get_Valid() then return end
     local is_pawn = char ~= player
     if is_pawn then
-        assert(set_fsm_enabled(char, true), "Cannot enable pawn FSM for seated pose")
         for _, binding in ipairs(seat_bindings) do
             if binding.char == char then
                 if seat_spec.useDirectMotion and not force_anim_node then binding.pose_node = nil
@@ -1089,9 +1024,6 @@ local function start_seated_animation(char, seat_spec, force_anim_node)
     end
     
     if seat_spec.useDirectMotion and not force_anim_node then
-        if not is_pawn and seat_spec.freezeFsm then
-            set_fsm_enabled(char, false)
-        end
         local ok, err = pcall(function()
             local motion = char:get_Motion()
             if is_pawn then assert(motion, "Pawn Motion unavailable") end
@@ -1109,21 +1041,14 @@ local function start_seated_animation(char, seat_spec, force_anim_node)
         pcall(function() action_manager = char["<ActionManager>k__BackingField"] end)
         
         if action_manager then
-            if seat_spec.freezeFsm then
-                set_fsm_enabled(char, true) 
-            end
-            
             local ok, err = pcall(function()
-                -- Pawns keep their FSM enabled; the pose guard rejects competing actions.
+                -- Internal requests bypass the pawn pose guard.
                 if is_pawn then
                     pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, 1)
                 else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
             end)
             if not ok then error(err) end
             
-            if not is_pawn and seat_spec.freezeFsm then
-                table.insert(pending_ai_lock, char)
-            end
         elseif is_pawn then error("Pawn ActionManager unavailable") end
     end
 end
@@ -1250,7 +1175,6 @@ local function bind_pawns_to_seats(wait_before_pose)
                 local binding = {char = pawn_character, seat_spec = preset.pawns[i]}
                 local ok, err = pcall(function()
                     if previous_pawns[pawn_character] then
-                        assert(set_fsm_enabled(pawn_character, true), "Cannot enable pawn FSM before Wait")
                         binding.pose_node, binding.pose_wait_until = "Wait", runtime_clock + 0.3
                         pawn_seat_physics.request_pose_action(pawn_character, "Wait", 0)
                     else
@@ -1613,10 +1537,7 @@ end
 
 local function release_pawns_at_intermediate_stop(reason)
     cart_trip.manual_standing_seats = false
-    -- Keep the player's seat binding; remove only followers and their queued locks.
-    for i = #pending_ai_lock, 1, -1 do
-        if pending_ai_lock[i] ~= player then table.remove(pending_ai_lock, i) end
-    end
+    -- Keep the player's seat binding; remove only followers.
     for i = #seat_bindings, 1, -1 do
         local char = seat_bindings[i].char
         if char ~= player then
@@ -2012,13 +1933,6 @@ end
 local function enforce_seat_transforms(ox, position_only)
     if not seating_lock_active or #seat_bindings == 0 then return end
 
-    local ox_transform = nil
-    if ox then
-        pcall(function()
-            if ox:get_Valid() then ox_transform = ox:get_Transform() end
-        end)
-    end
-
     local anchor_valid = false
     if seat_anchor_transform then
         pcall(function()
@@ -2051,7 +1965,7 @@ local function enforce_seat_transforms(ox, position_only)
             if not position_only then pawn_seat_physics.remove(i) end
         else
             local pose_ok = true
-            local anchor_transform = seat_spec.useOxAnchor and ox_transform or seat_anchor_transform
+            local anchor_transform = seat_anchor_transform
             if anchor_transform then
                 local updated, update_error = pcall(function()
                     -- Verify pawn physics before changing the root at all.
@@ -2093,18 +2007,16 @@ local function enforce_seat_transforms(ox, position_only)
             if not pose_ok then
                 if not position_only then pawn_seat_physics.remove(i) end
             elseif not position_only then
-                -- Keep pawn AI running; lock requests rather than its entire FSM.
                 if character ~= player then
                     local ok, err = pcall(function()
-                        assert(set_fsm_enabled(character, true), "Cannot keep pawn FSM enabled")
                         pawn_seat_physics.step_pose_wait(binding)
                     end)
                     if not ok then
                         binding.pose_failed = true
                         pawn_seat_physics.remove(i)
-                        log.error("[Oxcarts Journey Redux] Pawn pose lock failed: " .. tostring(err))
+                        log.error("[Oxcarts Journey Redux] Pawn seated animation failed: " .. tostring(err))
                     end
-                elseif seat_spec.freezeFsm then set_fsm_enabled(character, false) end
+                end
 
                 if not binding.pose_failed and not binding.pose_wait_until and seat_spec.randomIdle and binding.next_idle_time and runtime_clock >= binding.next_idle_time then
                     local random_anim = passenger_idle_nodes[math.random(1, #passenger_idle_nodes)]
@@ -2215,21 +2127,6 @@ re.on_application_entry("LateUpdateBehavior", function()
     if not finish_cart_pause(ox) then return end
     update_cart_normal_guard(ox)
     pawn_seat_physics.prune_party()
-    pawn_seat_physics.retry_release()
-
-    if #pending_ai_lock > 0 then
-        local current_refreeze = pending_ai_lock
-        pending_ai_lock = {}
-        for _, char in ipairs(current_refreeze) do
-            local bound = false
-            for _, binding in ipairs(seat_bindings) do
-                if binding.char == char and char == player and binding.seat_spec.freezeFsm then bound = true; break end
-            end
-            if bound and is_character_valid(char) and not set_fsm_enabled(char, false) then
-                table.insert(pending_ai_lock, char)
-            end
-        end
-    end
 
     for k, fn in pairs(frame_jobs) do 
         local success, _ = pcall(fn)
@@ -2378,18 +2275,8 @@ re.on_application_entry("LateUpdateBehavior", function()
     end
 end)
 
-local function draw_seat_editor(label, seat_spec, is_player)
+local function draw_seat_editor(label, seat_spec)
     if imgui.tree_node(label) then
-        local c0, v0 = imgui.checkbox("Use Ox Anchor", seat_spec.useOxAnchor)
-        if c0 then seat_spec.useOxAnchor = v0; persist_options() end
-        
-        imgui.same_line()
-        if is_player then
-            local c_fsm, v_fsm = imgui.checkbox("Freeze AI", seat_spec.freezeFsm)
-            if c_fsm then seat_spec.freezeFsm = v_fsm; persist_options() end
-        else imgui.text("Pose lock (FSM enabled)") end
-        
-        imgui.same_line()
         local c_idle, v_idle = imgui.checkbox("Random Idle", seat_spec.randomIdle)
         if c_idle then seat_spec.randomIdle = v_idle; persist_options() end
         
@@ -2535,7 +2422,7 @@ re.on_draw_ui(function()
                             if tp_changed then preset.teleportPlayer = tp_val; persist_options() end
                             
                             if preset.teleportPlayer then
-                                draw_seat_editor("Player Parameters", preset.player, true)
+                                draw_seat_editor("Player Parameters", preset.player)
                             end
                             
                             for p_idx = 1, 3 do
@@ -2554,11 +2441,11 @@ re.on_draw_ui(function()
                                 name = "Preset " .. (#options.Presets[cat] + 1), 
                                 enabled = true, 
                                 teleportPlayer = false,
-                                player = { x=src.player.x, z=src.player.z, y=src.player.y, lookX=src.player.lookX, lookZ=src.player.lookZ, anim=src.player.anim, useOxAnchor=src.player.useOxAnchor, freezeFsm=src.player.freezeFsm, randomIdle=src.player.randomIdle, useDirectMotion=src.player.useDirectMotion, bankID=src.player.bankID, motionID=src.player.motionID },
+                                player = { x=src.player.x, z=src.player.z, y=src.player.y, lookX=src.player.lookX, lookZ=src.player.lookZ, anim=src.player.anim, randomIdle=src.player.randomIdle, useDirectMotion=src.player.useDirectMotion, bankID=src.player.bankID, motionID=src.player.motionID },
                                 pawns = {} 
                             }
                             for idx = 1, 3 do
-                                new_preset.pawns[idx] = { x=src.pawns[idx].x, z=src.pawns[idx].z, y=src.pawns[idx].y, lookX=src.pawns[idx].lookX, lookZ=src.pawns[idx].lookZ, anim=src.pawns[idx].anim, useOxAnchor=src.pawns[idx].useOxAnchor, freezeFsm=src.pawns[idx].freezeFsm, randomIdle=src.pawns[idx].randomIdle, useDirectMotion=src.pawns[idx].useDirectMotion, bankID=src.pawns[idx].bankID, motionID=src.pawns[idx].motionID }
+                                new_preset.pawns[idx] = { x=src.pawns[idx].x, z=src.pawns[idx].z, y=src.pawns[idx].y, lookX=src.pawns[idx].lookX, lookZ=src.pawns[idx].lookZ, anim=src.pawns[idx].anim, randomIdle=src.pawns[idx].randomIdle, useDirectMotion=src.pawns[idx].useDirectMotion, bankID=src.pawns[idx].bankID, motionID=src.pawns[idx].motionID }
                             end
                             table.insert(options.Presets[cat], new_preset)
                             persist_options()
