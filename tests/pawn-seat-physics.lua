@@ -37,6 +37,8 @@ local function start_seated_animation() error('Unexpected animation mutation') e
 local passenger_idle_nodes={}
 local roster={[pawn]=true}
 local function collect_party_pawns() return {pawn},roster end
+local function collect_companions() return {pawn},roster,{} end
+local function companion_interacting() return false end
 
 -- IMPLEMENTATION --
 pawn_seat_physics.step_pose_wait=function() end

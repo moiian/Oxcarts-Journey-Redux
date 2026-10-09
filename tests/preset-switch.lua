@@ -19,6 +19,8 @@ local pawn={get_Valid=function() return true end,get_Transform=function() return
 local function is_character_valid(ch) return ch==pawn or ch==player end
 local function set_fsm_enabled() error('Seat animation must not change FSM state') end
 local function collect_party_pawns() return {pawn}, {[pawn]=true} end
+local function collect_companions() return {pawn}, {[pawn]=true},{} end
+local function companion_interacting() return false end
 local external,paused=false,false
 local function external_driver_active() return external end
 local function gameplay_is_paused() return paused end

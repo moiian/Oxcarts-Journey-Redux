@@ -493,7 +493,22 @@ local function normalize_presets()
             preset.player.motionID = preset.player.motionID or 0
 
             preset.pawns = preset.pawns or {}
-            for i = 1, 3 do
+            for i = 1, 9 do
+                if i>3 and not preset.pawns[i] then
+                    local chosen
+                    for row=0,4 do
+                        for _,x in ipairs({0.85,-0.85,0}) do
+                            local z=-1.1-row*0.8
+                            local free=true
+                            for _,slot in ipairs(preset.pawns) do
+                                if (x-(slot.x or 0))^2+(z-(slot.z or 0))^2<0.65^2 then free=false;break end
+                            end
+                            if free then chosen={x=x,y=0.85,z=z,lookX=x>=0 and 1 or -1,lookZ=0,randomIdle=true};break end
+                        end
+                        if chosen then break end
+                    end
+                    preset.pawns[i]=chosen or {x=0,y=0.85,z=-1.1-(i-1)*0.8,lookX=1,lookZ=0,randomIdle=true}
+                end
                 if not preset.pawns[i] then preset.pawns[i] = {} end
                 preset.pawns[i].x = preset.pawns[i].x or 0.0
                 preset.pawns[i].z = preset.pawns[i].z or 0.0
@@ -887,8 +902,8 @@ end
 
 local function collect_party_pawns()
     local pawn_manager = sdk.get_managed_singleton("app.PawnManager")
-    if not pawn_manager then return {nil, nil, nil} end
-    local party_members, roster = {nil, nil, nil}, {}
+    if not pawn_manager then return nil end -- Unavailable is not an empty party.
+    local party_members, roster = {}, {}
     local main_pawn = pawn_manager:get_MainPawn()
     if main_pawn then
         local main_character = main_pawn:get_CachedCharacter()
@@ -918,14 +933,68 @@ local function collect_party_pawns()
                     elseif party_slot == 1 then party_members[2] = pawn_character
                     elseif party_slot == 2 then party_members[3] = pawn_character
                     else
-                        if not party_members[2] then party_members[2] = pawn_character
-                        elseif not party_members[3] then party_members[3] = pawn_character end
+                        local exists=false
+                        for _,ch in pairs(party_members) do if ch==pawn_character then exists=true;break end end
+                        if not exists then
+                            local index=4
+                            while party_members[index] do index=index+1 end
+                            party_members[index]=pawn_character
+                        end
                     end
                 end
             end
         end
     end
-    return party_members, roster
+    local ordered={}
+    local last=3
+    for index in pairs(party_members) do last=math.max(last,index) end
+    for i=1,last do if party_members[i] then ordered[#ordered+1]=party_members[i] end end
+    return ordered, roster
+end
+
+local escort_roster={actors={},next_scan=0}
+local function companion_interacting(ch)
+    local ok,value=pcall(function()
+        local manager=sdk.get_managed_singleton("app.InteractManager")
+        return manager and manager:call("isInteracting(app.Character)",ch)
+    end)
+    return ok and value==true
+end
+local function collect_companions()
+    local party_ok,members,roster=pcall(collect_party_pawns)
+    if not party_ok or not members or not roster then return nil end
+    local guests={}
+    if runtime_clock>=escort_roster.next_scan then
+        escort_roster.next_scan=runtime_clock+1
+        local prior={}
+        for _,ch in ipairs(escort_roster.actors) do prior[ch]=true end
+        local ok,found=pcall(function()
+            local nm=sdk.get_managed_singleton("app.NPCManager")
+            assert(nm and nm.NPCHolderDic,"NPC roster unavailable")
+            local td=sdk.find_type_definition("app.NPCUtil")
+            local method=td and td:get_method("isAccompanyPLParty(app.Character)")
+            assert(method,"NPC membership unavailable")
+            local list,seen={},{}
+            for _,holder in pairs(nm.NPCHolderDic) do
+                local ch
+                pcall(function() ch=holder and nm:getCharacter(holder.CharaID) end)
+                if is_character_valid(ch) and ch~=player and not roster[ch] and not seen[ch] then
+                    seen[ch]=true
+                    local read_ok,following=pcall(function() return method:call(nil,ch) end)
+                    if (read_ok and following==true) or ((not read_ok or type(following)~="boolean") and prior[ch]) then list[#list+1]=ch end
+                end
+            end
+            table.sort(list,function(a,b) return a:get_address()<b:get_address() end)
+            return list
+        end)
+        if ok then escort_roster.actors=found end
+    end
+    for _,ch in ipairs(escort_roster.actors) do
+        if is_character_valid(ch) and ch~=player and not roster[ch] then
+            guests[ch]=true;roster[ch]=true;members[#members+1]=ch
+        end
+    end
+    return members,roster,guests
 end
 
 -- Pawn root transforms, universal position and physical controller must agree.
@@ -947,6 +1016,7 @@ function pawn_seat_physics.blocks_pose_action(character, node, layer)
         or cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused() then return false end
     for _, binding in ipairs(seat_bindings) do
         if binding.char == character then
+            if binding.guest and companion_interacting(character) then return false end
             return node ~= binding.pose_node
         end
     end
@@ -979,28 +1049,40 @@ function pawn_seat_physics.finish(character)
     pawn_seat_physics.release(character)
     pcall(function() character:get_Transform():set_Parent(nil) end)
 end
-function pawn_seat_physics.remove(index)
+function pawn_seat_physics.remove(index, native_interaction)
     local binding = table.remove(seat_bindings, index)
-    if binding then pawn_seat_physics.finish(binding.char) end
+    if binding and binding.char~=player then
+        pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
+        pawn_seat_physics.excluded[binding.char]=true
+    end
+    if binding and not native_interaction then pawn_seat_physics.finish(binding.char) end
     if #seat_bindings == 0 then seating_lock_active = false end
 end
 function pawn_seat_physics.prune_party()
-    local ok, _, roster = pcall(collect_party_pawns)
+    local ok, _, roster = pcall(collect_companions)
     if not ok or not roster then return end -- Unreadable does not prove departure.
     for i = #seat_bindings, 1, -1 do
         local char = seat_bindings[i].char
-        if not is_character_valid(char) or (char ~= player and not roster[char]) then
-            pawn_seat_physics.remove(i)
+        local interacting=seat_bindings[i].guest and companion_interacting(char)
+        if not is_character_valid(char) or (char ~= player and not roster[char]) or interacting then
+            pawn_seat_physics.remove(i,interacting)
+            if not interacting and char~=player and is_character_valid(char) then
+                pcall(pawn_seat_physics.request_pose_action,char,"Wait",0)
+            end
         end
+    end
+    for ch in pairs(pawn_seat_physics.excluded or {}) do
+        if not roster[ch] then pawn_seat_physics.excluded[ch]=nil end
     end
 end
 
 
 -- Detach every bound character and resume normal pawn control.
 local function detach_bound_characters()
+    pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
     for _, binding in ipairs(seat_bindings) do
-        pawn_seat_physics.finish(binding.char)
+        if not (binding.guest and companion_interacting(binding.char)) then pawn_seat_physics.finish(binding.char) end
     end
     for k in pairs(seat_bindings) do seat_bindings[k] = nil end
 end
@@ -1065,6 +1147,8 @@ local function release_passengers_from_skill()
     if not seating_lock_active then return end
     if not player or not player:get_Valid() then return end
     
+    local passengers={}
+    for _,binding in ipairs(seat_bindings) do if binding.char~=player then passengers[#passengers+1]=binding.char end end
     seating_lock_active = false
     detach_bound_characters()
 
@@ -1084,9 +1168,7 @@ local function release_passengers_from_skill()
         if action_manager then action_manager:requestActionCore(0, "Wait", 0) end
     end
 
-    local party_members = collect_party_pawns()
-    for i = 1, 3 do
-        local pawn_character = party_members[i]
+    for _,pawn_character in ipairs(passengers) do
         if pawn_character and pawn_character ~= player then
             local action_manager = pawn_character["<ActionManager>k__BackingField"]
             if action_manager then action_manager:requestActionCore(0, "Wait", 0) end
@@ -1098,6 +1180,8 @@ local function release_passengers_from_modifier()
     if not player or not player:get_Valid() then return end
     if not seating_lock_active then return end
     
+    local passengers={}
+    for _,binding in ipairs(seat_bindings) do if binding.char~=player then passengers[#passengers+1]=binding.char end end
     seating_lock_active = false
     detach_bound_characters()
 
@@ -1117,9 +1201,7 @@ local function release_passengers_from_modifier()
         if action_manager then action_manager:requestActionCore(0, "Wait", 0) end
     end
 
-    local party_members = collect_party_pawns()
-    for i = 1, 3 do
-        local pawn_character = party_members[i]
+    for _,pawn_character in ipairs(passengers) do
         if pawn_character and pawn_character:get_Valid() and pawn_character ~= player then
             local action_manager = pawn_character["<ActionManager>k__BackingField"]
             if action_manager then action_manager:requestActionCore(0, "Wait", 0) end
@@ -1128,8 +1210,13 @@ local function release_passengers_from_modifier()
 end
 
 -- Build the active bindings from the selected cart-specific layout.
-local function bind_pawns_to_seats(wait_before_pose)
+local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
     if external_driver_active() then return false end
+    if add_missing_only and (not seating_lock_active or not pawn_seat_physics.follow_roster) then return false end
+    if add_missing_only then
+        if runtime_clock<(pawn_seat_physics.next_roster_refresh or 0) then return false end
+        pawn_seat_physics.next_roster_refresh=runtime_clock+1
+    else pawn_seat_physics.next_roster_refresh=0;pawn_seat_physics.excluded={} end
     local ox = find_active_ox()
     if not ox then return end
     
@@ -1147,32 +1234,53 @@ local function bind_pawns_to_seats(wait_before_pose)
     if not preset then preset = options.Presets[cat] and options.Presets[cat][1] end
     if not preset then return end
 
+    if not add_missing_only then
     cart_trip.seat_changed_at = runtime_clock
     cart_trip.stopped_since = nil
     cart_trip.arrival_was_false = false
     cart_trip.last_check_at = nil
+    end
 
-    local previous_pawns = {}
+    local party_members,_,guests=collect_companions()
+    if not party_members then return end
+    local previous_pawns,previous_slots,bound = {},{},{}
+    for _,binding in ipairs(seat_bindings) do
+        bound[binding.char]=true
+        if binding.char~=player then previous_slots[binding.char]=binding.slot end
+    end
     if wait_before_pose then
         for _, binding in ipairs(seat_bindings) do
             if binding.char ~= player then previous_pawns[binding.char] = true end
         end
     end
-    detach_bound_characters() 
+    if not add_missing_only then detach_bound_characters() end
 
-    if preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
+    if not add_missing_only and preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
         start_seated_animation(player, preset.player)
         local next_idle = preset.player.randomIdle and (runtime_clock + math.random() * 25 + 5) or nil
         table.insert(seat_bindings, {char = player, seat_spec = preset.player, next_idle_time = next_idle})
     end
 
-    local party_members = collect_party_pawns()
-    for i = 1, 3 do
-        local pawn_character = party_members[i]
-        if pawn_character and pawn_character:get_Valid() and pawn_character ~= player then
+    local occupied,assigned,eligible={},{},{}
+    for _,ch in ipairs(party_members) do
+        eligible[ch]=ch~=player and not companion_interacting(ch)
+            and not (add_missing_only and (pawn_seat_physics.excluded or {})[ch])
+    end
+    for _,ch in ipairs(party_members) do
+        local slot=previous_slots[ch]
+        if eligible[ch] and slot and slot<=9 and not occupied[slot] then assigned[ch]=slot;occupied[slot]=true end
+    end
+    for _,ch in ipairs(party_members) do
+        if eligible[ch] and not assigned[ch] then for slot=1,9 do if not occupied[slot] then assigned[ch]=slot;occupied[slot]=true;break end end end
+    end
+    for _,pawn_character in ipairs(party_members) do
+        local i=assigned[pawn_character]
+        if i and pawn_character and pawn_character:get_Valid() and pawn_character ~= player
+            and not (add_missing_only and bound[pawn_character])
+            and not companion_interacting(pawn_character) then
             local physics_ready, physics_error = pcall(pawn_seat_physics.prepare, pawn_character)
             if physics_ready then
-                local binding = {char = pawn_character, seat_spec = preset.pawns[i]}
+                local binding = {char = pawn_character, seat_spec = preset.pawns[i],slot=i,guest=guests[pawn_character]==true}
                 local ok, err = pcall(function()
                     if previous_pawns[pawn_character] then
                         binding.pose_node, binding.pose_wait_until = "Wait", runtime_clock + 0.3
@@ -1186,16 +1294,21 @@ local function bind_pawns_to_seats(wait_before_pose)
                 binding.next_idle_time = next_idle
                 if ok then table.insert(seat_bindings, binding)
                 else
+                    pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
+                    pawn_seat_physics.excluded[pawn_character]=true
                     pawn_seat_physics.finish(pawn_character)
                     log.error("[Oxcarts Journey Redux] Pawn pose request failed: " .. tostring(err))
                 end
             else
+                pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
+                pawn_seat_physics.excluded[pawn_character]=true
                 log.error("[Oxcarts Journey Redux] Pawn seat skipped: " .. tostring(physics_error))
             end
         end
     end
     
     seating_lock_active = #seat_bindings > 0
+    if not add_missing_only then pawn_seat_physics.follow_roster=seating_lock_active end
     return seating_lock_active
 end
 
@@ -1536,6 +1649,7 @@ local function release_passengers_for_cart_stop()
 end
 
 local function release_pawns_at_intermediate_stop(reason)
+    pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
     -- Keep the player's seat binding; remove only followers.
     for i = #seat_bindings, 1, -1 do
@@ -2127,6 +2241,7 @@ re.on_application_entry("LateUpdateBehavior", function()
     if not finish_cart_pause(ox) then return end
     update_cart_normal_guard(ox)
     pawn_seat_physics.prune_party()
+    if seating_lock_active then bind_pawns_to_seats(false,true) end
 
     for k, fn in pairs(frame_jobs) do 
         local success, _ = pcall(fn)
@@ -2425,8 +2540,12 @@ re.on_draw_ui(function()
                                 draw_seat_editor("Player Parameters", preset.player)
                             end
                             
-                            for p_idx = 1, 3 do
-                                draw_seat_editor("Pawn " .. p_idx .. " Parameters", preset.pawns[p_idx])
+                            local members=collect_companions()
+                            local visible=math.max(3,math.min(9,members and #members or 0))
+                            for _,binding in ipairs(seat_bindings) do if binding.slot then visible=math.max(visible,binding.slot) end end
+                            imgui.text("Up to 9 companions: Main Pawn, other pawns, then following NPCs.")
+                            for p_idx = 1, visible do
+                                draw_seat_editor((p_idx<=3 and "Pawn " or "Companion ") .. p_idx .. " Parameters", preset.pawns[p_idx])
                             end
                             imgui.tree_pop()
                         end
@@ -2444,7 +2563,7 @@ re.on_draw_ui(function()
                                 player = { x=src.player.x, z=src.player.z, y=src.player.y, lookX=src.player.lookX, lookZ=src.player.lookZ, anim=src.player.anim, randomIdle=src.player.randomIdle, useDirectMotion=src.player.useDirectMotion, bankID=src.player.bankID, motionID=src.player.motionID },
                                 pawns = {} 
                             }
-                            for idx = 1, 3 do
+                            for idx = 1, 9 do
                                 new_preset.pawns[idx] = { x=src.pawns[idx].x, z=src.pawns[idx].z, y=src.pawns[idx].y, lookX=src.pawns[idx].lookX, lookZ=src.pawns[idx].lookZ, anim=src.pawns[idx].anim, randomIdle=src.pawns[idx].randomIdle, useDirectMotion=src.pawns[idx].useDirectMotion, bankID=src.pawns[idx].bankID, motionID=src.pawns[idx].motionID }
                             end
                             table.insert(options.Presets[cat], new_preset)

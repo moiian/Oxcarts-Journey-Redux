@@ -48,3 +48,12 @@ if (@($presetStart,$presetEnd,$saveStart,$saveEnd,$copyStart,$copyEnd,$editorSta
 $compatibilityFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'preset-compatibility.lua') -Raw
 $compatibilityFixture.Replace('-- PRESET IMPLEMENTATION --',$source.Substring($presetStart,$presetEnd-$presetStart)).Replace('-- SAVE IMPLEMENTATION --',$source.Substring($saveStart,$saveEnd-$saveStart)).Replace('-- ADD PRESET IMPLEMENTATION --',$source.Substring($copyStart,$copyEnd-$copyStart)).Replace('-- EDITOR IMPLEMENTATION --',$source.Substring($editorStart,$editorEnd-$editorStart)) | python -X utf8 $LuaChecker --execute
 if ($LASTEXITCODE -ne 0) { throw 'OJR legacy preset compatibility tests failed' }
+$collectorStart = $source.IndexOf('local function collect_party_pawns(')
+$collectorEnd = $source.IndexOf('-- Pawn root transforms', $collectorStart)
+$releaseVariantStart = $source.IndexOf('-- Release variants')
+$releaseVariantEnd = $source.IndexOf('-- Build the active bindings', $releaseVariantStart)
+$intermediateStart = $source.IndexOf('local function release_pawns_at_intermediate_stop(')
+$intermediateEnd = $source.IndexOf('local function check_intermediate_arrival(', $intermediateStart)
+$companionFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'companion-seats.lua') -Raw
+$companionFixture.Replace('-- COLLECTOR --',$source.Substring($collectorStart,$collectorEnd-$collectorStart)).Replace('-- IMPLEMENTATION --',$switchImplementation).Replace('-- RELEASE VARIANTS --',$source.Substring($releaseVariantStart,$releaseVariantEnd-$releaseVariantStart)).Replace('-- INTERMEDIATE RELEASE --',$source.Substring($intermediateStart,$intermediateEnd-$intermediateStart)) | python -X utf8 $LuaChecker --execute
+if ($LASTEXITCODE -ne 0) { throw 'OJR companion seats tests failed' }
