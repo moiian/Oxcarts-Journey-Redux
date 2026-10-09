@@ -238,6 +238,9 @@ if previous_seat_bindings then
         local char = item
         if type(item) == "table" and item.char then char = item.char end
         if is_character_valid(char) then
+            if type(item)=="table" and item.fsm_machine then
+                pcall(function() item.fsm_machine:call("set_Enabled(System.Boolean)",item.fsm_enabled) end)
+            end
             pcall(function() char:get_Transform():set_Parent(nil) end)
         end
     end
@@ -309,6 +312,7 @@ local options = {
     STATUS_IMMUNITY = true,
     PREVENT_INSTABREAKS = true,
     DISABLE_PAWN_DAMAGE = true,
+    FREEZE_COMPANION_FSM = true,
     
     -- Nearby cart protection multipliers.
     GIMMICK_DAMAGE_RECEIVED = 0.01,
@@ -558,6 +562,7 @@ local function load_options()
         end
     end
     normalize_presets()
+    options.FREEZE_COMPANION_FSM=options.FREEZE_COMPANION_FSM~=false
     rebuild_input_watchlist()
 end
 
@@ -1010,17 +1015,40 @@ function pawn_seat_physics.request_pose_action(character, node, priority)
     pawn_seat_physics.issuing[character] = previous
     if not ok then error(err) end
 end
-function pawn_seat_physics.blocks_pose_action(character, node, layer)
-    if character == player or layer ~= 0 or pawn_seat_physics.issuing[character]
-        or external_driver_active() or not seating_lock_active
-        or cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused() then return false end
-    for _, binding in ipairs(seat_bindings) do
-        if binding.char == character then
-            if binding.guest and companion_interacting(character) then return false end
-            return node ~= binding.pose_node
+function pawn_seat_physics.restore_fsm(binding)
+    if binding and binding.fsm_machine then
+        if is_character_valid(binding.char) then
+            local ok,err=pcall(function() binding.fsm_machine:call("set_Enabled(System.Boolean)",binding.fsm_enabled) end)
+            if not ok then log.error("Companion FSM restore failed: "..tostring(err)) end
         end
+        binding.fsm_machine,binding.fsm_enabled,binding.fsm_freeze_at=nil,nil,nil
     end
-    return false
+end
+function pawn_seat_physics.begin_pose(binding)
+    if not binding or binding.char==player then return end
+    if options.FREEZE_COMPANION_FSM==false then pawn_seat_physics.restore_fsm(binding);return end
+    if not binding.fsm_machine then
+        local human=binding.char["<Human>k__BackingField"]
+        local machine=human and human.Fsm
+        if not machine then
+            local manager=binding.char["<ActionManager>k__BackingField"] or binding.char:get_ActionManager()
+            machine=manager and manager.Fsm
+        end
+        assert(machine,"Companion FSM unavailable")
+        local enabled=machine:call("get_Enabled()")
+        assert(type(enabled)=="boolean","Cannot capture companion FSM state")
+        binding.fsm_machine,binding.fsm_enabled=machine,enabled
+    end
+    binding.fsm_machine:call("set_Enabled(System.Boolean)",true)
+    binding.fsm_freeze_at=runtime_clock+0.3
+end
+function pawn_seat_physics.update_fsm(binding)
+    if binding.char==player then return end
+    if options.FREEZE_COMPANION_FSM==false then pawn_seat_physics.restore_fsm(binding);return end
+    if not binding.fsm_machine then pawn_seat_physics.begin_pose(binding) end
+    if not binding.pose_wait_until and runtime_clock>=(binding.fsm_freeze_at or math.huge) then
+        binding.fsm_machine:call("set_Enabled(System.Boolean)",false)
+    end
 end
 function pawn_seat_physics.prepare(character)
     local context = character["<PosRotContext>k__BackingField"]
@@ -1050,6 +1078,7 @@ function pawn_seat_physics.finish(character)
     pcall(function() character:get_Transform():set_Parent(nil) end)
 end
 function pawn_seat_physics.remove(index, native_interaction)
+    pawn_seat_physics.restore_fsm(seat_bindings[index])
     local binding = table.remove(seat_bindings, index)
     if binding and binding.char~=player then
         pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
@@ -1082,6 +1111,7 @@ local function detach_bound_characters()
     pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
     for _, binding in ipairs(seat_bindings) do
+        pawn_seat_physics.restore_fsm(binding)
         if not (binding.guest and companion_interacting(binding.char)) then pawn_seat_physics.finish(binding.char) end
     end
     for k in pairs(seat_bindings) do seat_bindings[k] = nil end
@@ -1092,13 +1122,15 @@ re.on_script_reset(function()
     detach_bound_characters()
 end)
 
--- Start the requested motion; bound pawns reject competing action requests.
-local function start_seated_animation(char, seat_spec, force_anim_node)
+-- Let the requested animation initialize, then freeze the captured NPC FSM.
+local function start_seated_animation(char, seat_spec, force_anim_node, pending_binding)
     if not char or not char:get_Valid() then return end
     local is_pawn = char ~= player
     if is_pawn then
+        if pending_binding then pawn_seat_physics.begin_pose(pending_binding) end
         for _, binding in ipairs(seat_bindings) do
             if binding.char == char then
+                pawn_seat_physics.begin_pose(binding)
                 if seat_spec.useDirectMotion and not force_anim_node then binding.pose_node = nil
                 else binding.pose_node = force_anim_node or seat_spec.anim end
             end
@@ -1124,7 +1156,7 @@ local function start_seated_animation(char, seat_spec, force_anim_node)
         
         if action_manager then
             local ok, err = pcall(function()
-                -- Internal requests bypass the pawn pose guard.
+                -- The companion FSM is temporarily enabled for this request.
                 if is_pawn then
                     pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, 1)
                 else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
@@ -1283,10 +1315,11 @@ local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
                 local binding = {char = pawn_character, seat_spec = preset.pawns[i],slot=i,guest=guests[pawn_character]==true}
                 local ok, err = pcall(function()
                     if previous_pawns[pawn_character] then
+                        pawn_seat_physics.begin_pose(binding)
                         binding.pose_node, binding.pose_wait_until = "Wait", runtime_clock + 0.3
                         pawn_seat_physics.request_pose_action(pawn_character, "Wait", 0)
                     else
-                        start_seated_animation(pawn_character, preset.pawns[i])
+                        start_seated_animation(pawn_character, preset.pawns[i],nil,binding)
                         if not preset.pawns[i].useDirectMotion then binding.pose_node = preset.pawns[i].anim end
                     end
                 end)
@@ -1294,6 +1327,7 @@ local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
                 binding.next_idle_time = next_idle
                 if ok then table.insert(seat_bindings, binding)
                 else
+                    pawn_seat_physics.restore_fsm(binding)
                     pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
                     pawn_seat_physics.excluded[pawn_character]=true
                     pawn_seat_physics.finish(pawn_character)
@@ -2136,10 +2170,15 @@ local function enforce_seat_transforms(ox, position_only)
                     local random_anim = passenger_idle_nodes[math.random(1, #passenger_idle_nodes)]
                     local ok, err = pcall(start_seated_animation, character, seat_spec, random_anim)
                     if not ok and character ~= player then
+                        binding.pose_failed=true
                         pawn_seat_physics.remove(i)
                         log.error("[Oxcarts Journey Redux] Pawn random pose failed: " .. tostring(err))
                     end
                     binding.next_idle_time = runtime_clock + (math.random() * 35 + 10)
+                end
+                if not binding.pose_failed and character~=player then
+                    local ok,err=pcall(pawn_seat_physics.update_fsm,binding)
+                    if not ok then pawn_seat_physics.remove(i);log.error("[Oxcarts Journey Redux] Companion FSM failed: "..tostring(err)) end
                 end
             end
         end
@@ -2577,6 +2616,12 @@ re.on_draw_ui(function()
         end
         if imgui.tree_node("Other Settings") then
             local changed = false
+            local freeze_changed,freeze_value=imgui.checkbox("Freeze companion FSM",options.FREEZE_COMPANION_FSM)
+            if freeze_changed then
+                options.FREEZE_COMPANION_FSM=freeze_value
+                if not freeze_value then for _,binding in ipairs(seat_bindings) do pawn_seat_physics.restore_fsm(binding) end end
+                changed=true
+            end
             imgui.spacing()
             imgui.text("Damage Multipliers")
 
@@ -2651,9 +2696,6 @@ sdk.hook(
         data.priority = sdk.to_int64(args[3]) & 0xffffffff
         data.node = nodeName
 
-        if pawn_seat_physics.blocks_pose_action(char, nodeName, data.layer) then
-            return sdk.PreHookResult.SKIP_ORIGINAL
-        end
         
         local skip = false
         for _,fn in pairs(cart_action_filters) do

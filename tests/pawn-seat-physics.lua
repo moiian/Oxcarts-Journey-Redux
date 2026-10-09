@@ -1,4 +1,5 @@
 local calls, errors = {}, {}
+local options={FREEZE_COMPANION_FSM=true}
 local function vec(x,y,z) return {x=x,y=y,z=z} end
 local function recorder(name)
     return {call=function(_,method,value) calls[#calls+1]={name,method,value} end}
@@ -10,7 +11,12 @@ local function character()
     function transform:set_Position(value) self.position=value end
     function transform:lookAt(target,up) self.target,self.up=target,up end
     function transform:set_Parent(parent) self.parent=parent end
+    local machine={enabled=true,call=function(self,method,value)
+        if method=='get_Enabled()' then return self.enabled end
+        assert(method=='set_Enabled(System.Boolean)');self.enabled=value
+    end}
     return {get_Valid=function() return true end,get_Transform=function() return transform end,
+        ['<Human>k__BackingField']={Fsm=machine},
         ['<PosRotContext>k__BackingField']=recorder('context'),
         ['<AdjustTerrain>k__BackingField']={MainCharacterController=recorder('controller')},
         ['<FallInfo>k__BackingField']=recorder('fall')}
@@ -79,4 +85,4 @@ pawn_seat_physics.remove(1)
 assert(#seat_bindings==1 and extra:get_Transform().parent==nil,'Single removal left pawn attached')
 pawn_seat_physics.finish(extra)
 assert(#seat_bindings==1,'Repeated release changed remaining player binding')
-print('PASS: pawn sync/fall/photo, failed-sync release, full roster pruning, body-only anchor and no FSM mutation')
+print('PASS: pawn sync/fall/photo, failed-sync release, full roster pruning and body-only anchor')

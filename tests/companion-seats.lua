@@ -14,6 +14,11 @@ local function actor(id)
     ch['<AdjustTerrain>k__BackingField']={MainCharacterController={call=function() end}}
     ch['<FallInfo>k__BackingField']={call=function() end}
     ch['<ActionManager>k__BackingField']={requestActionCore=function(_,_,node) ch.actions[#ch.actions+1]=node end}
+    ch.machine={enabled=true,call=function(self,method,value)
+        if method=='get_Enabled()' then return self.enabled end
+        assert(method=='set_Enabled(System.Boolean)');self.enabled=value
+    end}
+    ch['<Human>k__BackingField']={Fsm=ch.machine}
     return ch
 end
 local player=actor(100)
@@ -68,7 +73,9 @@ assert(guests[npcs[1]] and not guests[pawns[1]])
 bind_pawns_to_seats()
 assert(#seat_bindings==9,'Nine companion capacity incorrect')
 for i,b in ipairs(seat_bindings) do assert(b.slot==i and b.char==members[i] and b.seat_spec==options.Presets.Normal[1].pawns[i]) end
-assert(pawn_seat_physics.blocks_pose_action(npcs[1],'Run',0),'Guest lacks pose lock')
+runtime_clock=runtime_clock+0.31
+for _,binding in ipairs(seat_bindings) do pawn_seat_physics.update_fsm(binding) end
+assert(not npcs[1].machine.enabled,'Guest lacks FSM freeze')
 local stable={}
 for _,b in ipairs(seat_bindings) do stable[b.char]=b.slot end
 local count=#npcs[1].actions
@@ -77,6 +84,7 @@ assert(#npcs[1].actions==count,'Roster refresh restarted existing pose')
 npcs[1].following=false;runtime_clock=3
 pawn_seat_physics.prune_party()
 assert(#seat_bindings==8 and npcs[1].actions[#npcs[1].actions]=='Wait','Departing guest not released')
+assert(npcs[1].machine.enabled,'Departing guest retained frozen FSM')
 bind_pawns_to_seats(false,true)
 assert(#seat_bindings==9,'New guest failed to fill vacancy')
 for _,b in ipairs(seat_bindings) do if stable[b.char] then assert(b.slot==stable[b.char],'Existing companion changed slot') end end
@@ -87,9 +95,10 @@ nm.NPCHolderDic=holders
 manager_missing=true;runtime_clock=9;pawn_seat_physics.prune_party();assert(#seat_bindings==9,'Unavailable PawnManager treated as empty party')
 manager_missing=false
 npcs[2].interacting=true
-assert(not pawn_seat_physics.blocks_pose_action(npcs[2],'QuestInteract',0),'Guest native interaction blocked by pose guard')
+assert(pawn_seat_physics.blocks_pose_action==nil,'Retired pose guard remains')
 local old_syncs,old_actions=npcs[2].syncs,#npcs[2].actions
 pawn_seat_physics.prune_party()
+assert(npcs[2].machine.enabled,'Native-interacting guest retained frozen FSM')
 assert(#seat_bindings==8 and npcs[2].syncs==old_syncs and #npcs[2].actions==old_actions and not npcs[2].detached,
     'Guest native interaction was overwritten during release')
 runtime_clock=11;bind_pawns_to_seats(false,true)
