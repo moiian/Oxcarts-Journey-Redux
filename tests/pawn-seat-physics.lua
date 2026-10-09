@@ -53,18 +53,19 @@ local ox={get_Valid=function() return true end,get_Transform=function()
     error('Removed ox anchor was accessed')
 end}
 enforce_seat_transforms(ox,false)
-assert(#calls==4,'Pawn physics synchronization missing or applied to player')
+assert(#calls==2,'Pawn physics synchronization missing or applied to player')
 assert(calls[1][2]=='setPos(via.Position)' and calls[1][3]==pawn:get_Transform().universal)
 assert(calls[2][2]=='warp()' and calls[2][3]==nil,'Controller warp must have no argument')
-assert(calls[3][2]=='resetBaseHeight(via.Position)' and calls[4][2]=='resetFallHeight()')
 local p=pawn:get_Transform().position
 assert(p.x==12 and math.abs(p.y-20)<0.0001 and p.z==35,'Preset coordinate convention changed')
 assert(pawn:get_Transform().up==axisY,'Cart tilt no longer preserved')
 calls={};enforce_seat_transforms(nil,true)
-assert(#calls==4,'Photo mode lost pawn physics synchronization')
+assert(#calls==2,'Photo mode reset fall or lost position synchronization')
 p=pawn:get_Transform().position
 calls={};pawn_seat_physics.release(pawn)
-assert(#calls==4 and pawn:get_Transform().position==p,'Release teleported pawn or missed fall reset')
+assert(#calls==2 and pawn:get_Transform().position==p,'Release teleported pawn or reset fall')
+calls={};pawn_seat_physics.reset_fall(pawn)
+assert(#calls==2 and calls[1][2]=='resetBaseHeight(via.Position)' and calls[2][2]=='resetFallHeight()','Explicit pose-event reset missing')
 calls={};pawn_seat_physics.release(player)
 assert(#calls==0,'Release changed native player physics')
 pawn['<FallInfo>k__BackingField']=nil

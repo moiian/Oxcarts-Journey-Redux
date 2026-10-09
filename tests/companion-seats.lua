@@ -9,6 +9,8 @@ local function actor(id)
     local transform={get_UniversalPosition=function() return {} end,
         set_Parent=function() ch.detached=true end}
     function ch:get_Transform() return transform end
+    function transform:set_Position(p) self.position=p end
+    function transform:lookAt() end
     local context={call=function() ch.syncs=ch.syncs+1 end}
     ch['<PosRotContext>k__BackingField']=context
     ch['<AdjustTerrain>k__BackingField']={MainCharacterController={call=function() end}}
@@ -51,6 +53,13 @@ local external=false
 local function external_driver_active() return external end
 local function gameplay_is_paused() return false end
 local ox,anchor={},{}
+local function vec_scale(v,k) return {x=v.x*k,y=v.y*k,z=v.z*k} end
+local function vec_add(a,b) return {x=a.x+b.x,y=a.y+b.y,z=a.z+b.z} end
+function anchor:get_Position() return {x=0,y=0,z=0} end
+function anchor:get_AxisX() return {x=1,y=0,z=0} end
+function anchor:get_AxisY() return {x=0,y=1,z=0} end
+function anchor:get_AxisZ() return {x=0,y=0,z=1} end
+local seat_anchor_transform=anchor
 local function find_active_ox() return ox end
 local function find_cart_body() return anchor end
 local function resolve_seat_anchor() return anchor end
@@ -60,7 +69,7 @@ local function player_uses_cart_seat_node() return true end
 local re={on_script_reset=function() end}
 local log={error=function(err) error(err) end}
 local options={Presets={Normal={{enabled=true,pawns={}}}}}
-for i=1,9 do options.Presets.Normal[1].pawns[i]={x=i,y=0.85,z=0,anim='SitOnChairActions',randomIdle=true} end
+for i=1,9 do options.Presets.Normal[1].pawns[i]={x=i,y=0.85,z=0,lookX=0,lookZ=1,anim='SitOnChairActions',randomIdle=true} end
 
 -- COLLECTOR --
 -- IMPLEMENTATION --
@@ -74,6 +83,7 @@ bind_pawns_to_seats()
 assert(#seat_bindings==9,'Nine companion capacity incorrect')
 for i,b in ipairs(seat_bindings) do assert(b.slot==i and b.char==members[i] and b.seat_spec==options.Presets.Normal[1].pawns[i]) end
 runtime_clock=runtime_clock+0.31
+pawn_seat_physics.advance_frame()
 for _,binding in ipairs(seat_bindings) do pawn_seat_physics.update_fsm(binding) end
 assert(not npcs[1].machine.enabled,'Guest lacks FSM freeze')
 local stable={}
@@ -107,7 +117,7 @@ local removed=seat_bindings[1].char
 pawn_seat_physics.remove(1)
 runtime_clock=12;bind_pawns_to_seats(false,true)
 for _,b in ipairs(seat_bindings) do assert(b.char~=removed,'Caught/failed companion automatically recaptured') end
--- Preset switching retains slots, waits only on followers, and never touches ox.
+-- Preset switching retains slots, directly requests poses, and never touches ox.
 npcs[2].interacting=false
 runtime_clock=13;bind_pawns_to_seats(true)
 for _,b in ipairs(seat_bindings) do if stable[b.char] then assert(b.slot==stable[b.char]) end end
@@ -121,4 +131,4 @@ assert(#seat_bindings==0 and not seating_lock_active)
 runtime_clock=17;bind_pawns_to_seats(false,true);assert(#seat_bindings==0,'Manual stand automatically reseated companions')
 bind_pawns_to_seats();release_passengers_from_skill();assert(#seat_bindings==0)
 external=true;assert(not bind_pawns_to_seats(),'OJR ignored external LMD ownership')
-print('PASS: nine mixed companion seats, guest membership/interaction release, errors, stable vacancy fill, manual/stop release, preset wait and external ownership')
+print('PASS: nine mixed companion seats, guest membership/interaction release, errors, stable vacancy fill, manual/stop release, preset switch and external ownership')

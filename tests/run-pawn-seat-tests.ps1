@@ -57,3 +57,9 @@ $intermediateEnd = $source.IndexOf('local function check_intermediate_arrival(',
 $companionFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'companion-seats.lua') -Raw
 $companionFixture.Replace('-- COLLECTOR --',$source.Substring($collectorStart,$collectorEnd-$collectorStart)).Replace('-- IMPLEMENTATION --',$switchImplementation).Replace('-- RELEASE VARIANTS --',$source.Substring($releaseVariantStart,$releaseVariantEnd-$releaseVariantStart)).Replace('-- INTERMEDIATE RELEASE --',$source.Substring($intermediateStart,$intermediateEnd-$intermediateStart)) | python -X utf8 $LuaChecker --execute
 if ($LASTEXITCODE -ne 0) { throw 'OJR companion seats tests failed' }
+$uiStart = $source.IndexOf('re.on_draw_ui(function()')
+$uiEnd = $source.IndexOf('sdk.hook(', $uiStart)
+$uiFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'menu-layout.lua') -Raw
+$uiFixture.Replace('-- UI IMPLEMENTATION --',$source.Substring($uiStart,$uiEnd-$uiStart)) | python -X utf8 $LuaChecker --execute
+if ($LASTEXITCODE -ne 0) { throw 'OJR menu layout tests failed' }
+if ($source -match 'checkbox\("Freeze companion FSM"' -or $source -notmatch 'options\.FREEZE_COMPANION_FSM=true') { throw 'OJR FSM must be hidden and enabled on load' }

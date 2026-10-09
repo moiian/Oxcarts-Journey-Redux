@@ -562,7 +562,7 @@ local function load_options()
         end
     end
     normalize_presets()
-    options.FREEZE_COMPANION_FSM=options.FREEZE_COMPANION_FSM~=false
+    options.FREEZE_COMPANION_FSM=true
     rebuild_input_watchlist()
 end
 
@@ -1022,6 +1022,7 @@ function pawn_seat_physics.restore_fsm(binding)
             if not ok then log.error("Companion FSM restore failed: "..tostring(err)) end
         end
         binding.fsm_machine,binding.fsm_enabled,binding.fsm_freeze_at=nil,nil,nil
+        binding.fsm_freeze_frame=nil
     end
 end
 function pawn_seat_physics.begin_pose(binding)
@@ -1040,14 +1041,27 @@ function pawn_seat_physics.begin_pose(binding)
         binding.fsm_machine,binding.fsm_enabled=machine,enabled
     end
     binding.fsm_machine:call("set_Enabled(System.Boolean)",true)
-    binding.fsm_freeze_at=runtime_clock+0.3
+    binding.fsm_freeze_frame=(pawn_seat_physics.frame or 0)+1
+    binding.fsm_freeze_at=nil
 end
 function pawn_seat_physics.update_fsm(binding)
     if binding.char==player then return end
     if options.FREEZE_COMPANION_FSM==false then pawn_seat_physics.restore_fsm(binding);return end
     if not binding.fsm_machine then pawn_seat_physics.begin_pose(binding) end
-    if not binding.pose_wait_until and runtime_clock>=(binding.fsm_freeze_at or math.huge) then
+    local due=binding.fsm_freeze_frame and (pawn_seat_physics.frame or 0)>=binding.fsm_freeze_frame
+        or (not binding.fsm_freeze_frame and runtime_clock>=(binding.fsm_freeze_at or math.huge))
+    if due then
         binding.fsm_machine:call("set_Enabled(System.Boolean)",false)
+    end
+end
+function pawn_seat_physics.advance_frame()
+    pawn_seat_physics.frame=(pawn_seat_physics.frame or 0)+1
+    for i=#seat_bindings,1,-1 do
+        local binding=seat_bindings[i]
+        if binding.fsm_freeze_frame then
+            local ok,err=pcall(pawn_seat_physics.update_fsm,binding)
+            if not ok then pawn_seat_physics.remove(i);log.error("Companion next-frame freeze failed: "..tostring(err)) end
+        end
     end
 end
 function pawn_seat_physics.prepare(character)
@@ -1059,13 +1073,30 @@ function pawn_seat_physics.prepare(character)
     return context, controller, fall
 end
 function pawn_seat_physics.synchronize(character, transform)
-    local context, controller, fall = pawn_seat_physics.prepare(character)
+    local context, controller = pawn_seat_physics.prepare(character)
     local universal_position = transform:get_UniversalPosition()
     context:call("setPos(via.Position)", universal_position)
     -- No-argument warp reads the owning transform; never pass scene vec3 to setPos.
     controller:call("warp()")
+end
+function pawn_seat_physics.reset_fall(character)
+    local _,_,fall=pawn_seat_physics.prepare(character)
+    local universal_position=character:get_Transform():get_UniversalPosition()
     fall:call("resetBaseHeight(via.Position)", universal_position)
     fall:call("resetFallHeight()")
+end
+function pawn_seat_physics.place(character,seat_spec)
+    if character~=player then pawn_seat_physics.prepare(character) end
+    local anchor=assert(seat_anchor_transform,"Seat anchor unavailable")
+    local origin=anchor:get_Position()
+    local x,y,z=anchor:get_AxisX(),anchor:get_AxisY(),anchor:get_AxisZ()
+    local pos=vec_add(vec_add(vec_add(origin,vec_scale(x,seat_spec.x)),vec_scale(z,seat_spec.z)),vec_scale(y,seat_spec.y))
+    local target=vec_add(pos,vec_add(vec_scale(x,seat_spec.lookX),vec_scale(z,seat_spec.lookZ)))
+    if seat_spec.lookX==0 and seat_spec.lookZ==0 then target=vec_add(pos,x) end
+    local transform=character:get_Transform()
+    transform:set_Position(pos)
+    transform:lookAt(target,y)
+    if character~=player then pawn_seat_physics.synchronize(character,transform) end
 end
 function pawn_seat_physics.release(character)
     if character ~= player and is_character_valid(character) then
@@ -1123,7 +1154,7 @@ re.on_script_reset(function()
 end)
 
 -- Let the requested animation initialize, then freeze the captured NPC FSM.
-local function start_seated_animation(char, seat_spec, force_anim_node, pending_binding)
+local function start_seated_animation(char, seat_spec, force_anim_node, pending_binding, legacy_switch)
     if not char or not char:get_Valid() then return end
     local is_pawn = char ~= player
     if is_pawn then
@@ -1131,12 +1162,17 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
         for _, binding in ipairs(seat_bindings) do
             if binding.char == char then
                 pawn_seat_physics.begin_pose(binding)
+                pending_binding=binding
                 if seat_spec.useDirectMotion and not force_anim_node then binding.pose_node = nil
                 else binding.pose_node = force_anim_node or seat_spec.anim end
             end
         end
     end
     
+    if is_pawn then
+        pawn_seat_physics.place(char,seat_spec)
+        pawn_seat_physics.reset_fall(char)
+    end
     if seat_spec.useDirectMotion and not force_anim_node then
         local ok, err = pcall(function()
             local motion = char:get_Motion()
@@ -1158,19 +1194,12 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
             local ok, err = pcall(function()
                 -- The companion FSM is temporarily enabled for this request.
                 if is_pawn then
-                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, 1)
+                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, legacy_switch and 0 or 1)
                 else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
             end)
             if not ok then error(err) end
             
         elseif is_pawn then error("Pawn ActionManager unavailable") end
-    end
-end
-
-function pawn_seat_physics.step_pose_wait(binding)
-    if binding.pose_wait_until and runtime_clock >= binding.pose_wait_until then
-        start_seated_animation(binding.char, binding.seat_spec)
-        binding.pose_wait_until = nil
     end
 end
 
@@ -1242,7 +1271,7 @@ local function release_passengers_from_modifier()
 end
 
 -- Build the active bindings from the selected cart-specific layout.
-local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
+local function bind_pawns_to_seats(legacy_switch, add_missing_only)
     if external_driver_active() then return false end
     if add_missing_only and (not seating_lock_active or not pawn_seat_physics.follow_roster) then return false end
     if add_missing_only then
@@ -1275,15 +1304,10 @@ local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
 
     local party_members,_,guests=collect_companions()
     if not party_members then return end
-    local previous_pawns,previous_slots,bound = {},{},{}
+    local previous_slots,bound = {},{}
     for _,binding in ipairs(seat_bindings) do
         bound[binding.char]=true
         if binding.char~=player then previous_slots[binding.char]=binding.slot end
-    end
-    if wait_before_pose then
-        for _, binding in ipairs(seat_bindings) do
-            if binding.char ~= player then previous_pawns[binding.char] = true end
-        end
     end
     if not add_missing_only then detach_bound_characters() end
 
@@ -1314,14 +1338,8 @@ local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
             if physics_ready then
                 local binding = {char = pawn_character, seat_spec = preset.pawns[i],slot=i,guest=guests[pawn_character]==true}
                 local ok, err = pcall(function()
-                    if previous_pawns[pawn_character] then
-                        pawn_seat_physics.begin_pose(binding)
-                        binding.pose_node, binding.pose_wait_until = "Wait", runtime_clock + 0.3
-                        pawn_seat_physics.request_pose_action(pawn_character, "Wait", 0)
-                    else
-                        start_seated_animation(pawn_character, preset.pawns[i],nil,binding)
-                        if not preset.pawns[i].useDirectMotion then binding.pose_node = preset.pawns[i].anim end
-                    end
+                    start_seated_animation(pawn_character, preset.pawns[i],nil,binding,legacy_switch and previous_slots[pawn_character]~=nil)
+                    if not preset.pawns[i].useDirectMotion then binding.pose_node = preset.pawns[i].anim end
                 end)
                 local next_idle = preset.pawns[i].randomIdle and (runtime_clock + math.random() * 25 + 5) or nil
                 binding.next_idle_time = next_idle
@@ -1347,9 +1365,6 @@ local function bind_pawns_to_seats(wait_before_pose, add_missing_only)
 end
 
 local function sit_with_next_preset()
-    for _, binding in ipairs(seat_bindings) do
-        if binding.pose_wait_until then return end
-    end
     -- Coalesce overlapping modifier/skill bindings within one gameplay frame.
     if last_sit_request_at == runtime_clock then return end
     local ox = find_active_ox()
@@ -1366,6 +1381,7 @@ local function sit_with_next_preset()
         next_idx = next_idx % #presets + 1
         if presets[next_idx].enabled then
             preset_cursor[cat] = next_idx
+            if pawn_seat_physics.menu then pawn_seat_physics.menu.indices[cat]=next_idx end
             if bind_pawns_to_seats(true) then
                 -- A deliberate modifier Sit while standing must survive the
                 -- automatic Walk/Wait release check on subsequent frames.
@@ -2116,30 +2132,7 @@ local function enforce_seat_transforms(ox, position_only)
             local anchor_transform = seat_anchor_transform
             if anchor_transform then
                 local updated, update_error = pcall(function()
-                    -- Verify pawn physics before changing the root at all.
-                    if character ~= player then pawn_seat_physics.prepare(character) end
-                    local anchorPos = anchor_transform:get_Position()
-                    local axisX = anchor_transform:get_AxisX()
-                    local axisY = anchor_transform:get_AxisY()
-                    local axisZ = anchor_transform:get_AxisZ()
-
-                    local offsetX_vec = vec_scale(axisX, seat_spec.x)
-                    local offsetZ_vec = vec_scale(axisZ, seat_spec.z)
-                    local offsetY_vec = vec_scale(axisY, seat_spec.y)
-                    local final_pos = vec_add(vec_add(vec_add(anchorPos, offsetX_vec), offsetZ_vec), offsetY_vec)
-
-                    character:get_Transform():set_Position(final_pos)
-
-                    local lookDirX = vec_scale(axisX, seat_spec.lookX)
-                    local lookDirZ = vec_scale(axisZ, seat_spec.lookZ)
-                    local look_target = vec_add(final_pos, vec_add(lookDirX, lookDirZ))
-                    if seat_spec.lookX == 0 and seat_spec.lookZ == 0 then
-                        look_target = vec_add(final_pos, axisX)
-                    end
-                    character:get_Transform():lookAt(look_target, axisY)
-                    if character ~= player then
-                        pawn_seat_physics.synchronize(character, character:get_Transform())
-                    end
+                    pawn_seat_physics.place(character,seat_spec)
                 end)
                 if not updated and binding.position_error ~= tostring(update_error) then
                     binding.position_error = tostring(update_error)
@@ -2155,18 +2148,7 @@ local function enforce_seat_transforms(ox, position_only)
             if not pose_ok then
                 if not position_only then pawn_seat_physics.remove(i) end
             elseif not position_only then
-                if character ~= player then
-                    local ok, err = pcall(function()
-                        pawn_seat_physics.step_pose_wait(binding)
-                    end)
-                    if not ok then
-                        binding.pose_failed = true
-                        pawn_seat_physics.remove(i)
-                        log.error("[Oxcarts Journey Redux] Pawn seated animation failed: " .. tostring(err))
-                    end
-                end
-
-                if not binding.pose_failed and not binding.pose_wait_until and seat_spec.randomIdle and binding.next_idle_time and runtime_clock >= binding.next_idle_time then
+                if not binding.pose_failed and seat_spec.randomIdle and binding.next_idle_time and runtime_clock >= binding.next_idle_time then
                     local random_anim = passenger_idle_nodes[math.random(1, #passenger_idle_nodes)]
                     local ok, err = pcall(start_seated_animation, character, seat_spec, random_anim)
                     if not ok and character ~= player then
@@ -2248,6 +2230,7 @@ end)
 
 re.on_application_entry("LateUpdateBehavior", function()
     if external_driver_active() then return end
+    pawn_seat_physics.advance_frame()
     if journey_handoff.suspended then driving_bus.journey.resume() end
     local ox = find_active_ox()
     observe_cart_pause(ox)
@@ -2471,17 +2454,17 @@ re.on_draw_ui(function()
     if imgui.tree_node("Oxcarts Journey Redux") then
         
         if imgui.tree_node("Keybind Settings") then
-            imgui.text("Format: [Action] : [Gamepad] | [Keyboard] ")
             imgui.spacing()
             if imgui.button("Restore default keybinds") then restore_default_key_bindings() end
             imgui.spacing()
 
             local function draw_dual_bind(label, padKey, mouseKey)
-                imgui.text(label .. ': ')
-                imgui.same_line(150)
+                imgui.table_next_row()
+                imgui.table_next_column();imgui.text(label)
+                imgui.table_next_column()
                 local p_changed, p_value = input_bindings.imgui_rebind_button(padKey, options[padKey])
                 if p_changed then options[padKey] = p_value; persist_options() end
-                imgui.same_line(300)
+                imgui.table_next_column()
                 if mouseKey == "Key_MouseSkillDash" then
                     imgui.text("Mouse Left")
                 elseif mouseKey == "Key_MouseSkillWalk" then
@@ -2492,21 +2475,34 @@ re.on_draw_ui(function()
                 end
             end
 
+            local function begin_bind_table(id)
+                if not imgui.begin_table(id,3,1) then return false end
+                imgui.table_next_row()
+                for _,label in ipairs({"Action","Gamepad","Keyboard"}) do
+                    imgui.table_next_column();imgui.table_header(label)
+                end
+                return true
+            end
             if imgui.tree_node("Cross Hotbar Key -- (Show only when near oxcart.)") then
+                if begin_bind_table("OJR cross hotbar bindings") then
                 draw_dual_bind("Modifier Key", "Key_PadModifyKey", "Key_MouseModifyKey")
-                imgui.separator()
                 draw_dual_bind("Oxcart Dash", "Key_PadModifyDash", "Key_MouseModifyDash")
                 draw_dual_bind("Oxcart Walk", "Key_PadModifyWalk", "Key_MouseModifyWalk")
                 draw_dual_bind("Pawns Sit/TP", "Key_PadModifyTeleport", "Key_MouseModifyTeleport")
                 draw_dual_bind("Pawns Stand", "Key_PadModifyStand", "Key_MouseModifyStand")
+                imgui.end_table()
+                end
                 imgui.tree_pop()
             end
             
             if imgui.tree_node("Right HotBar Key -- (Show only when riding oxcart.)") then
+                if begin_bind_table("OJR right hotbar bindings") then
                 draw_dual_bind("Oxcart Dash", "Key_PadSkillDash", "Key_MouseSkillDash")
                 draw_dual_bind("Oxcart Walk", "Key_PadSkillWalk", "Key_MouseSkillWalk")
                 draw_dual_bind("Pawns Sit/TP", "Key_PadSkillTeleport", "Key_MouseSkillTeleport")
                 draw_dual_bind("Pawns Stand", "Key_PadSkillStand", "Key_MouseSkillStand")
+                imgui.end_table()
+                end
                 imgui.tree_pop()
             end
             imgui.tree_pop()
@@ -2537,12 +2533,28 @@ re.on_draw_ui(function()
                 { id = "Wealthy", name = "Luxury Oxcart" }
             }
             
-            for _, cat_info in ipairs(cat_list) do
+            pawn_seat_physics.menu=pawn_seat_physics.menu or {indices={}}
+            local menu=pawn_seat_physics.menu
+            local category=menu.category or (active_cat=="Rainy" and 2 or active_cat=="Wealthy" and 3 or 1)
+            local category_changed,category_value=imgui.combo("Cart type",category,{"Normal Oxcart","Rainproof Oxcart","Luxury Oxcart"})
+            if category_changed and cat_list[category_value] then category=category_value;menu.category=category end
+            for _, cat_info in ipairs({cat_list[category]}) do
                 local cat = cat_info.id
-                if imgui.tree_node(cat_info.name .. " Presets") then
+                do
+                    local names={}
+                    for _,preset in ipairs(options.Presets[cat]) do names[#names+1]=preset.name..(preset.enabled and "" or " (disabled)") end
+                    local selected=math.max(1,math.min(#names,menu.indices[cat] or preset_cursor[cat] or 1))
+                    local layout_changed,layout_value=imgui.combo("Active layout",selected,names)
+                    if layout_changed and names[layout_value] then
+                        selected=layout_value;menu.indices[cat]=selected
+                        if cat==active_cat and options.Presets[cat][selected].enabled then
+                            preset_cursor[cat]=selected
+                            if seating_lock_active then bind_pawns_to_seats(true) end
+                        end
+                    end
                     for i, preset in ipairs(options.Presets[cat]) do
                         imgui.push_id(cat .. "_preset_" .. i)
-                        if imgui.tree_node("[" .. i .. "] " .. preset.name .. "###preset_node_" .. cat .. i) then
+                        if i==selected then
                             
                             local b_changed, b_val = imgui.checkbox("Enabled", preset.enabled)
                             if b_changed then preset.enabled = b_val; persist_options() end
@@ -2556,9 +2568,11 @@ re.on_draw_ui(function()
                                 else
                                     if imgui.button("Confirm Delete###conf_" .. cat .. i) then
                                         table.remove(options.Presets[cat], i)
-                                        if preset_cursor[cat] > #options.Presets[cat] then preset_cursor[cat] = 1 end
+                                        if (preset_cursor[cat] or 1)>i then preset_cursor[cat]=preset_cursor[cat]-1
+                                        elseif preset_cursor[cat]==i then preset_cursor[cat]=math.min(i,#options.Presets[cat]) end
+                                        menu.indices[cat]=math.min(i,#options.Presets[cat])
+                                        if cat==active_cat and seating_lock_active then bind_pawns_to_seats(true) end
                                         persist_options()
-                                        imgui.tree_pop()
                                         imgui.pop_id()
                                         break
                                     end
@@ -2586,7 +2600,6 @@ re.on_draw_ui(function()
                             for p_idx = 1, visible do
                                 draw_seat_editor((p_idx<=3 and "Pawn " or "Companion ") .. p_idx .. " Parameters", preset.pawns[p_idx])
                             end
-                            imgui.tree_pop()
                         end
                         imgui.pop_id()
                     end
@@ -2607,21 +2620,15 @@ re.on_draw_ui(function()
                             end
                             table.insert(options.Presets[cat], new_preset)
                             persist_options()
+                            menu.indices[cat]=#options.Presets[cat]
                         end
                     end
-                    imgui.tree_pop()
                 end
             end
             imgui.tree_pop()
         end
         if imgui.tree_node("Other Settings") then
             local changed = false
-            local freeze_changed,freeze_value=imgui.checkbox("Freeze companion FSM",options.FREEZE_COMPANION_FSM)
-            if freeze_changed then
-                options.FREEZE_COMPANION_FSM=freeze_value
-                if not freeze_value then for _,binding in ipairs(seat_bindings) do pawn_seat_physics.restore_fsm(binding) end end
-                changed=true
-            end
             imgui.spacing()
             imgui.text("Damage Multipliers")
 
