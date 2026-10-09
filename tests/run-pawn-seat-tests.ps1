@@ -1,6 +1,6 @@
-param([string]$LuaChecker = 'D:\_Project\Oxcart Mod\Let me drive oxcart\tests\lua_check.py')
+param([string]$LuaChecker = (Join-Path $PSScriptRoot 'lua_check.py'))
 $ErrorActionPreference = 'Stop'
-$source = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'reframework/autorun/Oxcarts Journey Redux.lua') -Raw
+$source = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'reframework/autorun/Oxcarts Journey Redux/journey.lua') -Raw
 $source | python -X utf8 $LuaChecker
 if ($LASTEXITCODE -ne 0) { throw 'OJR syntax validation failed' }
 $physicsStart = $source.IndexOf('local pawn_seat_physics = {}')

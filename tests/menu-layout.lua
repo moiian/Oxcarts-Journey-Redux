@@ -3,6 +3,7 @@ local function preset(name)
 end
 local options={Presets={Normal={preset('Normal 1'),preset('Normal 2')},Rainy={preset('Rain 1')},Wealthy={preset('Luxury 1')}}}
 local preset_cursor={Normal=1,Rainy=1,Wealthy=1}
+local driving_bus={}
 local pawn_seat_physics,seat_bindings={},{}
 local seating_lock_active=true
 local function find_active_ox() return {} end

@@ -130,5 +130,12 @@ release_passengers_from_modifier()
 assert(#seat_bindings==0 and not seating_lock_active)
 runtime_clock=17;bind_pawns_to_seats(false,true);assert(#seat_bindings==0,'Manual stand automatically reseated companions')
 bind_pawns_to_seats();release_passengers_from_skill();assert(#seat_bindings==0)
+bind_pawns_to_seats()
+local guest=npcs[3]
+local syncs,actions=guest.syncs,#guest.actions
+guest.interacting=true
+release_pawns_at_intermediate_stop('native guest started during mode exit')
+assert(guest.syncs==syncs and #guest.actions==actions and guest.machine.enabled,'Mode exit overwrote guest native interaction')
+guest.interacting=false
 external=true;assert(not bind_pawns_to_seats(),'OJR ignored external LMD ownership')
 print('PASS: nine mixed companion seats, guest membership/interaction release, errors, stable vacancy fill, manual/stop release, preset switch and external ownership')
