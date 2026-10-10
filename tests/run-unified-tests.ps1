@@ -14,6 +14,8 @@ $driver=Get-Content -Raw (Join-Path $modules 'driver.lua')
 $assertions=Get-Content -Raw (Join-Path $PSScriptRoot 'unified-native-seats.lua')
 Push-Location $project
 try {
+    python -X utf8 (Join-Path $PSScriptRoot 'check-builtin-presets.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Imported builtin preset regressions failed' }
     Get-Content -Raw (Join-Path $PSScriptRoot 'destroy-guard.lua') | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Occupied cart destruction guard failed' }
     if (Test-Path -LiteralPath (Join-Path $project 'debug/Aelinore DEBUG tool2.lua')) {

@@ -1,4 +1,6 @@
-# Oxcarts Journey Redux 4.17
+# Oxcarts Journey Redux 4.18
+
+Author: aelinore
 
 将 OJR 的乘客旅行模式与 Let me drive oxcart 的原生司机位、手动驾驶整合为一个 REFramework 模组。随从控制及座位预设只有一份，不再同时运行两个独立模组。
 
@@ -87,3 +89,5 @@ NPC 司机必须实际占用司机位且 `isSit()` 为 true，才允许乘客行
 4.17 完整模拟回归通过；用户已实测乘客和玩家驾驶、Dash 转弯、主动停车、下车及同行者恢复，无明显问题。实测范围不代表所有地图、任务或模组组合都已验证。安装包仅含 10 个 Lua、modinfo.ini 和 screenshot.jpg，不含 tests、debug、用户配置或备份。
 
 本分支为 `experimental/unified-oxcart`，与 `main` 分开维护。4.16 修复动作 hook 异常放行、FSM 恢复保留及整组释放隔离，并改善 Dash 转弯保持；4.17 清理旧司机实验、内嵌录制器、专用观察 hook 和死代码，正式功能保留。
+
+4.18 内置 aelinore 当前自定义的七套布局：普通牛车 4 套、篷车 2 套、豪华牛车 1 套。包含九个同行者槽及乘客/司机各自的位置和镜头参数；首次安装和 Restore all built-in layouts 使用此批参数。更新不会强行覆盖现有布局或个人按键设置。

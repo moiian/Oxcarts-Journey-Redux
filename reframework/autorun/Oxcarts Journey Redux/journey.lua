@@ -375,28 +375,177 @@ end
 
 -- Built-in seat layouts are grouped by cart body type.
 local function get_default_normal_presets()
+    -- aelinore layouts imported from the local OJR configuration.
     return {
-        {["builtin_id"]="passenger:Normal:1",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-2.5},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-4.050000190734863},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
-        {["builtin_id"]="passenger:Normal:2",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[2] Side by Side",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.8999999761581421,["y"]=0.25,["z"]=-4.050000190734863},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
-        {["builtin_id"]="passenger:Normal:3",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[3] Look Around",["pawns"]={{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.35,["y"]=0.77,["z"]=-2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=1,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.6},{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=-1.350000023841858,["y"]=0.7699999809265137,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
-        {["builtin_id"]="passenger:Normal:4",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[4] Sit on the Edge",["pawns"]={{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1.25,["y"]=0.8,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.25,["z"]=-4.2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-3.450000047683716},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=true}
+        {
+            ["builtin_id"] = "passenger:Normal:1",
+            ["driver"] = {["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},
+            ["driver_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[1] Facing Each Other",
+            ["passenger_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-2.5},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-4.050000190734863},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-2.7},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
+        {
+            ["builtin_id"] = "passenger:Normal:2",
+            ["driver"] = {["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},
+            ["driver_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[2] Side by Side",
+            ["passenger_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.8999999761581421,["y"]=0.25,["z"]=-4.050000190734863},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
+        {
+            ["builtin_id"] = "passenger:Normal:3",
+            ["driver"] = {["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},
+            ["driver_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[3] Look Around",
+            ["passenger_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.35,["y"]=0.77,["z"]=-2},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=1,["lookZ"]=1,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.6},
+                {["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=-1.350000023841858,["y"]=0.7699999809265137,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
+        {
+            ["builtin_id"] = "passenger:Normal:4",
+            ["driver"] = {["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},
+            ["driver_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[4] Sit on the Edge",
+            ["passenger_camera"] = {["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1.25,["y"]=0.8,["z"]=-3.35},
+                {["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.25,["z"]=-4.2},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-3.450000047683716},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = true,
+        },
     }
 end
 
 local function get_default_rainy_presets()
+    -- aelinore layouts imported from the local OJR configuration.
     return {
-        {["builtin_id"]="passenger:Rainy:1",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},["driver_camera"]={["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Rainy - Side by Side",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
-        {["builtin_id"]="passenger:Rainy:2",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},["driver_camera"]={["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[2] Rainy - Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1,["y"]=0.23,["z"]=-2.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.95,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false}
+        {
+            ["builtin_id"] = "passenger:Rainy:1",
+            ["driver"] = {["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},
+            ["driver_camera"] = {["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[1] Rainy - Side by Side",
+            ["passenger_camera"] = {["distance"]=1.2000000476837158,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1.0,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.8500000238418579,["y"]=0.23000000417232513,["z"]=-4.349999904632568},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
+        {
+            ["builtin_id"] = "passenger:Rainy:2",
+            ["driver"] = {["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},
+            ["driver_camera"] = {["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[2] Rainy - Facing Each Other",
+            ["passenger_camera"] = {["distance"]=1.2000000476837158,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1,["y"]=0.23,["z"]=-2.35},
+                {["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.95,["y"]=0.23,["z"]=-4.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1.0,["lookZ"]=0.0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.949999988079071,["y"]=0.23000000417232513,["z"]=-3.1500000953674316},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
     }
 end
 
 local function get_default_wealthy_presets()
+    -- aelinore layouts imported from the local OJR configuration.
     return {
-        {["builtin_id"]="passenger:Wealthy:1",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=0,["y"]=0.92,["yaw"]=180,["z"]=0.274},["driver_camera"]={["distance"]=5.704999923706055,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Luxury - Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=-1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.45,["y"]=0.23,["z"]=-3.15},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.5,["y"]=0.23,["z"]=-1.2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.5,["y"]=0.23,["z"]=-1.25},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-2.7},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-3.5000000000000004},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-4.300000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false}
+        {
+            ["builtin_id"] = "passenger:Wealthy:1",
+            ["driver"] = {["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=0,["y"]=0.92,["yaw"]=180,["z"]=0.274},
+            ["driver_camera"] = {["distance"]=5.704999923706055,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            ["enabled"] = true,
+            ["name"] = "[1] Luxury - Facing Each Other",
+            ["passenger_camera"] = {["distance"]=5.704999923706055,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},
+            pawns = {
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=-1,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.45,["y"]=0.23,["z"]=-3.15},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.5,["y"]=0.23,["z"]=-1.2},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.5,["y"]=0.23,["z"]=-1.25},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-2.7},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-3.5000000000000004},
+                {["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["pelvisCompensation"]=false,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-4.300000000000001},
+            },
+            ["player"] = {["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},
+            ["skipPassenger"] = false,
+            ["teleportPlayer"] = false,
+        },
     }
 end
 
--- Upgrade older settings in place and fill newly introduced seat fields.
 local function normalize_presets(target)
     local options=target or options
     if type(options.Presets) ~= "table" then
