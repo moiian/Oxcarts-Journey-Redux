@@ -127,6 +127,7 @@ function M.refresh()
     for _,kind in ipairs(families) do
         for i,p in ipairs(M.options.Presets[kind]) do
             M.driver_for(p)
+            M.camera_for(p,true)
             local slots={p.driver}
             for n=1,9 do
                 local slot=copy(p.pawns[n])
@@ -180,5 +181,20 @@ function M.driver_for(preset)
 end
 function M.clone_player_seats(src,dst)
     dst.driver,dst.driver_camera=copy(src.driver),copy(src.driver_camera)
+    dst.passenger_camera=copy(src.passenger_camera)
+end
+function M.camera_for(preset,passenger)
+    local _,driver_camera=M.driver_for(preset)
+    if not passenger then return driver_camera end
+    if type(preset.passenger_camera)~='table' then preset.passenger_camera=copy(driver_camera) end
+    local c=preset.passenger_camera
+    local function bounded(key,default,lo,hi)
+        local n=tonumber(c[key]) or default
+        if n~=n or math.abs(n)==math.huge then n=default end
+        c[key]=math.max(lo,math.min(hi,n))
+    end
+    bounded('fov',60,20,120);bounded('distance',1,0,10)
+    c.fov_enabled,c.distance_enabled=c.fov_enabled==true,c.distance_enabled==true
+    return c
 end
 return M

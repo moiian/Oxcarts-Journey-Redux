@@ -38,29 +38,37 @@ local tr={get_Position=function() return {x=0,y=0,z=0} end,
     get_Joints=function() return {get_elements=function() return {hip} end} end}
 local ch={get_Valid=function() return true end,get_Transform=function() return tr end}
 local anchor={get_Valid=function() return true end,get_AxisY=function() return {x=0,y=1,z=0} end}
-local binding={char=ch,slot=1}
+local binding={char=ch,slot=1,seat_spec={pelvisCompensation=true}}
 local function tick(t) pelvis.tick({binding},anchor,{},true,t) end
-tick(100);assert(pelvis.states[binding].baseline==nil)
-tick(100.299);assert(hip.writes==0 and pelvis.states[binding].baseline==nil)
-hip.p.y=0.77;tick(100.301)
-assert(math.abs(pelvis.states[binding].baseline-0.77)<0.00001 and hip.writes==0,'Captured unstable baseline')
+local frozen=false
+binding.fsm_freeze_frame=1
+binding.fsm_machine={call=function() return not frozen end}
+tick(100);assert(pelvis.states[binding].baseline==nil,'Baseline captured before next-frame freeze')
+frozen=true;hip.p.y=0.77;tick(100)
+assert(math.abs(pelvis.states[binding].baseline-0.77)<0.00001 and hip.writes==0,'Post-freeze baseline missing')
 hip.p={x=0,y=1.42,z=0};tick(101)
-assert(math.abs(hip.p.y-0.77)<0.00001,'Post-delay compensation failed')
-pelvis.invalidate(binding);tick(102);tick(102.299)
-assert(pelvis.states[binding].baseline==nil,'New pose did not restart delay')
-hip.p={x=0,y=0.9,z=0};tick(102.301)
+assert(math.abs(hip.p.y-0.77)<0.00001,'Compensation failed')
+pelvis.invalidate(binding);hip.p={x=0,y=0.9,z=0};tick(102)
 assert(math.abs(pelvis.states[binding].baseline-0.9)<0.00001,'New pose retained prior height')
 pelvis.tick({binding},anchor,{},false,103)
 assert(next(pelvis.states)==nil)
-print('PASS: pelvis 0.3s delayed baseline, settled height, new-pose delay restart and disabled cleanup')
+pelvis.clear()
+print('PASS: pelvis next-frame post-freeze baseline, compensation, new-pose recapture and disabled cleanup')
 
 local f=assert(io.open('reframework/autorun/Oxcarts Journey Redux/journey.lua','r'))
 local source=f:read('*a');f:close()
 local exit=assert(source:match('if prior_player_seat_state and not physically_sitting then(.-)\n    end\n    prior_player_seat_state'))
 local released=0
+local live_action='Walk'
 local env={seat_bindings={},release_pawns_at_intermediate_stop=function() released=released+1 end,
+    get_cart_action=function() return live_action end,
     stop_cart_rush=function() error('Standing up must not stop rush') end,
-    cart_trip=setmetatable({}, {__newindex=function() error('Standing up must not reset speed') end})}
+    cart_trip={manual_speed=true}}
 assert(load(exit,'passenger exit','t',env))()
 assert(released==1,'Standing up did not release companions')
-print('PASS: actual passenger-exit branch releases companions without cancelling speed lease or manual speed')
+for _,action in ipairs({'Run','Dash'}) do
+    live_action=action;env.cart_trip.keep_standing_companions=nil
+    assert(load(exit,'passenger exit','t',env))()
+    assert(released==1 and env.cart_trip.keep_standing_companions and env.cart_trip.manual_speed)
+end
+print('PASS: passenger exit releases during Walk, retains companions during Run/Dash and does not reset speed')

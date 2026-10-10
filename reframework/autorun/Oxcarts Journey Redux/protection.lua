@@ -7,6 +7,59 @@ end
 function M.same(a,b)
     return a~=nil and b~=nil and a:get_address()==b:get_address()
 end
+-- Match the current logical cart and its children, never a global NPC list.
+function M.destroy_target(container,scope)
+    if not container or not scope or scope.riding~=true or scope.loading~=false
+        or scope.fast_travel~=0 then return false end
+    local seen={}
+    local function child_matches(root,depth)
+        if not root or depth>3 then return false end
+        local address=root:get_address()
+        if seen[address] then return false end;seen[address]=true
+        if M.same(container,root) then return true end
+        local children=root._Children
+        if children then
+            for i=0,math.min(children:get_Count(),32)-1 do
+                if child_matches(children[i],depth+1) then return true end
+            end
+        end
+        return false
+    end
+    if child_matches(scope.container,0) then return true end
+    local current=container
+    for _=1,4 do
+        if not current then break end
+        if M.same(current,scope.container) then return true end
+        local common=current._CommonInfo
+        local id=common and common._ObjectID and common._ObjectID._SelectedCharacterID
+        if id~=nil and (tostring(id)==tostring(scope.ox_id)
+            or (scope.driver_id~=nil and tostring(id)==tostring(scope.driver_id))) then return true end
+        current=current['<ParentContainer>k__BackingField']
+    end
+    return false
+end
+function M.install_destroy_guard(resolve,report)
+    local definition=sdk.find_type_definition('app.GenerateManager')
+    local signature='requestDestroy(app.GenerateInfo.GenerateInfoContainer, System.Boolean, System.Boolean, System.Boolean, System.Boolean, System.Boolean)'
+    local method=definition and definition:get_method(signature)
+    if not method then if report then report('destroy-hook','destroy guard unavailable') end;return false end
+    sdk.hook(method,function(args)
+        local storage=thread.get_hook_storage()
+        storage.ojr_destroy_blocked=false
+        local ok,blocked=pcall(function()
+            return M.destroy_target(sdk.to_managed_object(args[3]),resolve())
+        end)
+        if ok and blocked then
+            storage.ojr_destroy_blocked=true
+            if report then report('destroy-blocked','blocked current occupied cart destruction') end
+            return sdk.PreHookResult.SKIP_ORIGINAL
+        end
+    end,function(ret)
+        if thread.get_hook_storage().ojr_destroy_blocked then return sdk.to_ptr(0) end
+        return ret
+    end)
+    return true
+end
 function M.cart_receiver(receiver,ox,body,cow,near,parts)
     if not near or not M.valid(receiver) then return false end
     if M.valid(body) and M.same(receiver,body) then return true end
@@ -27,7 +80,7 @@ function M.new(writer)
         now=now or os.clock()
         if self.messages[key] and now-self.messages[key]<5 then return end
         self.messages[key]=now
-        if writer then writer('[OJR Protection] '..message) end
+        if writer then writer('[OJR Protection] '..message,key) end
     end
     function state:restore(id,item)
         local ok,err=pcall(function()

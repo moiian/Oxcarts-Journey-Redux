@@ -36,6 +36,11 @@ for _,family in ipairs({'Normal','Rainy','Wealthy'}) do
     assert(list[2].builtin_id==nil,'Custom layout mistaken for built-in')
 end
 assert(not options.ManualSettings.presets,'A second persisted layout store survived')
+local camera_preset=options.Presets.Normal[1]
+local passenger_camera=M.camera_for(camera_preset,true)
+assert(passenger_camera~=camera_preset.driver_camera and passenger_camera.fov==75,'Passenger camera fallback is missing or shared')
+passenger_camera.fov=85;M.refresh()
+assert(camera_preset.driver_camera.fov==75 and camera_preset.passenger_camera.fov==85,'Passenger camera overwrote driver camera')
 local custom=options.Presets.Normal[2]
 assert(M.activate(2) and M.cursor.Normal==2)
 settings.presets[2].slots[1].x=0.5
@@ -47,6 +52,7 @@ assert(#options.Presets.Normal==2 and M.removed_imports==0,'Reload changed prese
 local extra=layout('Extra custom');M.clone_player_seats(custom,extra)
 options.Presets.Normal[3]=extra
 assert(extra.driver~=custom.driver and extra.driver_camera~=custom.driver_camera and extra.builtin_id==nil)
+assert(extra.passenger_camera~=custom.passenger_camera and extra.passenger_camera.fov==custom.passenger_camera.fov)
 M.restore_builtins()
 for _,family in ipairs({'Normal','Rainy','Wealthy'}) do
     local p=options.Presets[family][1]

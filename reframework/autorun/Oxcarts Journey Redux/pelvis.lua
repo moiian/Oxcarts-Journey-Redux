@@ -26,10 +26,15 @@ end
 function M.clear()
     M.restore();M.states={};_G.OJR_PelvisCompensationActive=false
 end
-function M.tick(bindings,anchor,player,enabled,now)
-    now=now or os.clock()
-    _G.OJR_PelvisCompensationActive=enabled==true
-    if not enabled then M.clear();return end
+function M.tick(bindings,anchor,player,enabled)
+    local active=false
+    if enabled then
+        for _,binding in pairs(bindings) do
+            if binding.char~=player and binding.seat_spec and binding.seat_spec.pelvisCompensation==true then active=true;break end
+        end
+    end
+    _G.OJR_PelvisCompensationActive=active
+    if not active then M.clear();return end
     local debug_stop=rawget(_G,"OJR_StopDebugPelvisTest")
     if type(debug_stop)=="function" then pcall(debug_stop) end
     if not valid(anchor) then M.clear();return end
@@ -39,13 +44,12 @@ function M.tick(bindings,anchor,player,enabled,now)
     local ux,uy,uz=up.x/length,up.y/length,up.z/length
     local seen={}
     for _,binding in pairs(bindings) do
-        if binding.char~=player and binding.slot and valid(binding.char) then
+        if binding.char~=player and binding.slot and binding.seat_spec and binding.seat_spec.pelvisCompensation==true and valid(binding.char) then
             seen[binding]=true
             local s=M.states[binding]
-            if not s then s={ready_at=now+0.3};M.states[binding]=s end
+            if not s then s={};M.states[binding]=s end
             if not s.failed then
                 local ok,err=pcall(function()
-                    if now<s.ready_at then return end
                     if binding.fsm_freeze_frame and binding.fsm_machine and binding.fsm_machine:call("get_Enabled()")~=false then return end
                     local tr=binding.char:get_Transform()
                     if s.hip and not valid(s.hip) then s.searched=false end

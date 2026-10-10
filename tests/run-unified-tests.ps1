@@ -14,6 +14,14 @@ $driver=Get-Content -Raw (Join-Path $modules 'driver.lua')
 $assertions=Get-Content -Raw (Join-Path $PSScriptRoot 'unified-native-seats.lua')
 Push-Location $project
 try {
+    Get-Content -Raw (Join-Path $PSScriptRoot 'destroy-guard.lua') | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Occupied cart destruction guard failed' }
+    if (Test-Path -LiteralPath (Join-Path $project 'debug/Aelinore DEBUG tool2.lua')) {
+        Get-Content -Raw (Join-Path $PSScriptRoot 'debug-tool2.lua') | python -X utf8 $LuaChecker --execute
+        if ($LASTEXITCODE -ne 0) { throw 'Independent DEBUG tool2 tests failed' }
+    } else { Write-Output 'SKIP: optional independent DEBUG tool2 is not installed' }
+    Get-Content -Raw (Join-Path $PSScriptRoot 'display-anchor.lua') | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Separated physical/display anchor tests failed' }
     Get-Content -Raw (Join-Path $PSScriptRoot 'runtime-evidence.lua') | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Dedicated runtime evidence tests failed' }
     Get-Content -Raw (Join-Path $PSScriptRoot 'protection-recovery.lua') | python -X utf8 $LuaChecker --execute
@@ -24,9 +32,30 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Unified preset tests failed' }
     ($mock+"`n"+$setup+"`n"+$driver+"`n"+$assertions) | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Unified native integration tests failed' }
+    $surfaceAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'release-surface.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$surfaceAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Release runtime surface cleanup failed' }
+    $recoveryAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'release-recovery.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$recoveryAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Failure-safe action hooks / companion release recovery failed' }
+    $transformAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'transform-seat-integration.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$transformAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Transform / physics separation integration failed' }
+    $passengerAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'passenger-controls.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$passengerAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Passenger camera / movement / release integration failed' }
+    $autoSeatAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'passenger-auto-seat.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$autoSeatAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Passenger entry auto seating failed' }
+    $turnAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'turntarget.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$turnAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'TurnTarget speed restoration failed' }
     $policyAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'unified-policy-integration.lua')
     ($mock+"`n"+$setup+"`n"+$driver+"`n"+$policyAssertions) | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Unified policy integration tests failed' }
+    $driverlessAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'driverless-wait.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$driverlessAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Driverless cart Wait policy failed' }
     $protectionAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'protection-runtime.lua')
     ($mock+"`n"+$setup+"`n"+$driver+"`n"+$protectionAssertions) | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Native invincibility / actual cart parts integration failed' }

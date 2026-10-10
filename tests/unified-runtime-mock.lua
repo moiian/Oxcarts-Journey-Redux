@@ -1,3 +1,4 @@
+_G.OJR_EnableRuntimeDiagnostics=true
 local clock = 100
 os.clock = function() return clock end
 local callbacks, hooks, pre_callbacks = {}, {}, {}
@@ -26,6 +27,8 @@ local function object(name, p)
     function obj:get_Name() return self.name end
     function obj:get_Position() return self.pos end
     function obj:set_Position(p) self.pos=p end
+    function obj:get_Rotation() return self.rotation or quaternion(0,0,0,1) end
+    function obj:set_Rotation(q) self.rotation=q end
     function obj:get_Transform() return self end
     function obj:get_GameObject() return self.go or self end
     function obj:get_AxisX() return vec(1,0,0) end
@@ -114,7 +117,11 @@ for _,actor in ipairs(pawns) do add_position_components(actor) end
 cow['<PosRotContext>k__BackingField']={call=function() return heading end}
 function cow:call(method,value) self[method]=value end
 local passenger_controller={seated=false}
-function passenger_controller:call(method) assert(method=='isPlayerSit()');return self.seated end
+local npc_driver_seat={SitChara=driver,seated=true,call=function(self,method) assert(method=='isSit()');return self.seated end}
+function passenger_controller:call(method)
+    if method=='get_DrivingSeat' then return npc_driver_seat end
+    assert(method=='isPlayerSit()');return self.seated
+end
 ox.EnemyCtrl={Ch2={['<CachedConnectParts>k__BackingField']={CowChara=cow},
     ['<CachedOxcart>k__BackingField']=passenger_controller}}
 function ox:call() return self end

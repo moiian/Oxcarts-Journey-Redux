@@ -236,16 +236,26 @@ end
 -- so upgrading an active session cannot leave pawns parented to the cart.
 local legacy_seat_bindings = _G.BetterOxcarts_BoundPawns
 local previous_seat_bindings = _G.OJR_SeatBindings or legacy_seat_bindings
+_G.OJR_PendingFsmRestores = rawget(_G,"OJR_PendingFsmRestores") or {}
+for binding in pairs(_G.OJR_PendingFsmRestores) do binding.restore_attempts,binding.restore_next_at=0,0 end
 if previous_seat_bindings then
     for _, item in ipairs(previous_seat_bindings) do
         local char = item
         if type(item) == "table" and item.char then char = item.char end
-        if is_character_valid(char) then
-            if type(item)=="table" and item.fsm_machine then
-                pcall(function() item.fsm_machine:call("set_Enabled(System.Boolean)",item.fsm_enabled) end)
+        local readable,valid=pcall(function() return char and char:get_Valid() end)
+        if type(item)=="table" and item.fsm_machine then
+            local restored=readable and valid==true and pcall(function()
+                item.fsm_machine:call("set_Enabled(System.Boolean)",item.fsm_enabled)
+            end)
+            if restored or (readable and valid==false) then
+                _G.OJR_PendingFsmRestores[item]=nil
+                item.fsm_machine,item.fsm_enabled=nil,nil
+            else
+                item.fsm_freeze_frame,item.fsm_freeze_at=nil,nil
+                _G.OJR_PendingFsmRestores[item]=true
             end
-            pcall(function() char:get_Transform():set_Parent(nil) end)
         end
+        if readable and valid==true then pcall(function() char:get_Transform():set_Parent(nil) end) end
     end
 end
 _G.BetterOxcarts_BoundPawns = nil
@@ -259,7 +269,6 @@ local seat_anchor_transform = nil
 -- Session state shared by the frame updater and damage hooks.
 local prior_cart_seat_state = false
 local prior_player_seat_state = false
-local prior_cart_proximity = false -- 玩家是否在车附近
 local previous_fast_travel_state = 0
 local reseat_requested_at = nil
 local photo_mode_was_active = false
@@ -313,7 +322,6 @@ local options = {
     DISABLE_CAMERA = true,
     STATUS_IMMUNITY = true,
     FREEZE_COMPANION_FSM = true,
-    COMPANION_PELVIS_COMPENSATION = true,
     PREVENT_CART_BREAKUP = true,
     
     Key_PadModifyKey = {type = 'gamepad', key = 'LTrigBottom'},
@@ -457,6 +465,7 @@ local function normalize_presets(target)
                 preset.pawns[i].lookZ = preset.pawns[i].lookZ or 0.0
                 preset.pawns[i].anim = preset.pawns[i].anim or "SitOnChairActions"
                 preset.pawns[i].useOxAnchor, preset.pawns[i].freezeFsm = nil, nil
+                preset.pawns[i].pelvisCompensation=preset.pawns[i].pelvisCompensation==true
                 if type(preset.pawns[i].randomIdle) ~= "boolean" then preset.pawns[i].randomIdle = false end
                 if type(preset.pawns[i].useDirectMotion) ~= "boolean" then preset.pawns[i].useDirectMotion = false end
                 preset.pawns[i].bankID = preset.pawns[i].bankID or 0
@@ -499,7 +508,7 @@ local function load_options()
     end
     normalize_presets()
     options.FREEZE_COMPANION_FSM=true
-    options.COMPANION_PELVIS_COMPENSATION=true
+    options.COMPANION_PELVIS_COMPENSATION=nil
     options.PREVENT_CART_BREAKUP=true
     rebuild_input_watchlist()
 end
@@ -745,36 +754,6 @@ local function modifier_is_down()
     return pad_mod or mouse_mod
 end
 
-local function skill_binding_is_down(feature)
-    if is_key_valid(options[feature.padSkillKey]) then
-        local s, v = pcall(input_bindings.is_pressed, options[feature.padSkillKey])
-        if s and v then return true end
-    end
-    if feature.name == "Oxcart Dash" and input and not driving_bus.driver then
-        local s, v = pcall(function() return input:isButtonOn(MOUSE_DASH_FLAG) end)
-        if s and v then return true end
-    elseif feature.name == "Oxcart Walk" and input and not driving_bus.driver then
-        local s, v = pcall(function() return input:isButtonOn(MOUSE_WALK_FLAG) end)
-        if s and v then return true end
-    elseif is_key_valid(options[feature.mouseSkillKey]) then
-        local s, v = pcall(input_bindings.is_pressed, options[feature.mouseSkillKey])
-        if s and v then return true end
-    end
-    return false
-end
-
-local function alternate_binding_is_down(feature)
-    if is_key_valid(options[feature.padModifyKey]) then
-        local s, v = pcall(input_bindings.is_pressed, options[feature.padModifyKey])
-        if s and v then return true end
-    end
-    if is_key_valid(options[feature.mouseModifyKey]) then
-        local s, v = pcall(input_bindings.is_pressed, options[feature.mouseModifyKey])
-        if s and v then return true end
-    end
-    return false
-end
-
 local function collect_party_pawns()
     local pawn_manager = sdk.get_managed_singleton("app.PawnManager")
     if not pawn_manager then return nil end -- Unavailable is not an empty party.
@@ -875,30 +854,61 @@ end
 -- Pawn root transforms, universal position and physical controller must agree.
 -- Player positions remain owned by the existing native passenger interaction.
 local pawn_seat_physics = {}
-pawn_seat_physics.issuing = {}
 function pawn_seat_physics.request_pose_action(character, node, priority)
     local manager = character["<ActionManager>k__BackingField"]
     assert(manager, "Pawn ActionManager unavailable")
-    local previous = pawn_seat_physics.issuing[character]
-    pawn_seat_physics.issuing[character] = true
-    local ok, err = pcall(function() manager:requestActionCore(priority, node, 0) end)
-    pawn_seat_physics.issuing[character] = previous
-    if not ok then error(err) end
+    manager:requestActionCore(priority, node, 0)
 end
-function pawn_seat_physics.restore_fsm(binding)
-    if rawget(_G,"OJR_RuntimeDiagnostics") then _G.OJR_RuntimeDiagnostics.cancel_pose(binding) end
-    if rawget(_G,"OJR_UnifiedPelvis") then _G.OJR_UnifiedPelvis.invalidate(binding) end
-    if binding and binding.fsm_machine then
-        if is_character_valid(binding.char) then
-            local ok,err=pcall(function() binding.fsm_machine:call("set_Enabled(System.Boolean)",binding.fsm_enabled) end)
-            if not ok then log.error("Companion FSM restore failed: "..tostring(err)) end
+function pawn_seat_physics.restore_fsm(binding, retry)
+    if not binding then return true end
+    binding.fsm_freeze_frame,binding.fsm_freeze_at=nil,nil
+    for _,entry in ipairs({{"OJR_CompanionDisplay","release"},{"OJR_RuntimeDiagnostics","cancel_pose"},
+        {"OJR_UnifiedPelvis","invalidate"}}) do
+        local service=rawget(_G,entry[1])
+        if service then pcall(service[entry[2]],binding) end
+    end
+    local pending=rawget(_G,"OJR_PendingFsmRestores") or {}
+    _G.OJR_PendingFsmRestores=pending
+    if binding.fsm_machine then
+        local ok,err=pcall(function()
+            local valid=binding.char and binding.char:get_Valid()
+            assert(type(valid)=="boolean","Companion validity unreadable")
+            if valid then
+                binding.fsm_machine:call("set_Enabled(System.Boolean)",binding.fsm_enabled)
+            end
+        end)
+        if not ok then
+            if not pending[binding] then log.error("Companion FSM restore failed; recovery queued: "..tostring(err)) end
+            pending[binding]=true
+            binding.restore_attempts=(binding.restore_attempts or 0)+(retry and 1 or 0)
+            binding.restore_next_at=os.clock()+1
+            return false
         end
-        binding.fsm_machine,binding.fsm_enabled,binding.fsm_freeze_at=nil,nil,nil
-        binding.fsm_freeze_frame=nil
+        binding.fsm_machine,binding.fsm_enabled=nil,nil
+    end
+    pending[binding]=nil
+    binding.restore_attempts,binding.restore_next_at=nil,nil
+    return true
+end
+function pawn_seat_physics.retry_fsm_restores()
+    local pending=rawget(_G,"OJR_PendingFsmRestores")
+    if not pending or not next(pending) then return end
+    local now=os.clock()
+    for binding in pairs(pending) do
+        -- Exhausted records survive reset/reload; never recapture their frozen state.
+        local ok,valid=pcall(function() return binding.char and binding.char:get_Valid() end)
+        if ok and valid==false then
+            pending[binding]=nil;binding.fsm_machine,binding.fsm_enabled=nil,nil
+        elseif (binding.restore_attempts or 0)<5 and now>=(binding.restore_next_at or 0) then
+            pawn_seat_physics.restore_fsm(binding,true)
+        end
     end
 end
 function pawn_seat_physics.begin_pose(binding)
     if not binding or binding.char==player then return end
+    for prior in pairs(rawget(_G,"OJR_PendingFsmRestores") or {}) do
+        assert(prior.char~=binding.char,"Companion FSM recovery pending")
+    end
     if rawget(_G,"OJR_UnifiedPelvis") then _G.OJR_UnifiedPelvis.invalidate(binding) end
     if options.FREEZE_COMPANION_FSM==false then pawn_seat_physics.restore_fsm(binding);return end
     if not binding.fsm_machine then
@@ -927,10 +937,12 @@ function pawn_seat_physics.update_fsm(binding)
         local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
         if diagnostics then pcall(diagnostics.mark_pose,binding,seat_anchor_transform,'before-freeze',pawn_seat_physics.frame or 0,runtime_clock) end
         binding.fsm_machine:call("set_Enabled(System.Boolean)",false)
+        binding.fsm_freeze_frame=nil
         if diagnostics then pcall(diagnostics.mark_pose,binding,seat_anchor_transform,'after-freeze',pawn_seat_physics.frame or 0,runtime_clock) end
     end
 end
 function pawn_seat_physics.advance_frame()
+    pawn_seat_physics.retry_fsm_restores()
     pawn_seat_physics.frame=(pawn_seat_physics.frame or 0)+1
     for i=#seat_bindings,1,-1 do
         local binding=seat_bindings[i]
@@ -1016,7 +1028,7 @@ function pawn_seat_physics.sync_player_adjustment(preset)
 end
 function pawn_seat_physics.release(character)
     if character ~= player and is_character_valid(character) then
-        pcall(pawn_seat_physics.synchronize, character, character:get_Transform())
+        pcall(function() pawn_seat_physics.synchronize(character,character:get_Transform()) end)
     end
 end
 function pawn_seat_physics.finish(character)
@@ -1025,8 +1037,12 @@ function pawn_seat_physics.finish(character)
     pcall(function() character:get_Transform():set_Parent(nil) end)
 end
 function pawn_seat_physics.remove(index, native_interaction)
-    pawn_seat_physics.restore_fsm(seat_bindings[index])
-    local binding = table.remove(seat_bindings, index)
+    local binding=seat_bindings[index]
+    if not binding then return end
+    local display=rawget(_G,"OJR_CompanionDisplay")
+    if display and not native_interaction then pcall(display.commit,binding,seat_anchor_transform) end
+    pawn_seat_physics.restore_fsm(binding)
+    table.remove(seat_bindings, index)
     if binding and binding.char~=player then
         pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
         pawn_seat_physics.excluded[binding.char]=true
@@ -1059,11 +1075,12 @@ local function detach_bound_characters()
     pawn_seat_physics.restore_player_display()
     pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
-    for _, binding in ipairs(seat_bindings) do
-        pawn_seat_physics.restore_fsm(binding)
-        if not (binding.guest and companion_interacting(binding.char)) then pawn_seat_physics.finish(binding.char) end
+    for i=#seat_bindings,1,-1 do
+        local binding=seat_bindings[i]
+        local interacting=binding.guest and companion_interacting(binding.char)
+        pawn_seat_physics.remove(i,interacting)
     end
-    for k in pairs(seat_bindings) do seat_bindings[k] = nil end
+    seating_lock_active=false
 end
 
 re.on_script_reset(function()
@@ -1083,7 +1100,7 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
         end
         if observed_binding then
             pcall(diagnostics.begin_pose,observed_binding,seat_anchor_transform,force_anim_node or seat_spec.anim,
-                force_anim_node and 1 or 0,pawn_seat_physics.frame or 0,runtime_clock,
+                legacy_switch and 0 or 1,pawn_seat_physics.frame or 0,runtime_clock,
                 force_anim_node and 'random-idle' or (legacy_switch and 'preset-switch' or 'initial-or-reseat'))
         end
     end
@@ -1091,16 +1108,19 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
         if pending_binding then pawn_seat_physics.begin_pose(pending_binding) end
         for _, binding in ipairs(seat_bindings) do
             if binding.char == char then
-                pawn_seat_physics.begin_pose(binding)
+                if binding~=pending_binding then pawn_seat_physics.begin_pose(binding) end
                 pending_binding=binding
-                if seat_spec.useDirectMotion and not force_anim_node then binding.pose_node = nil
-                else binding.pose_node = force_anim_node or seat_spec.anim end
             end
         end
     end
     
     if is_pawn then
-        pawn_seat_physics.place(char,seat_spec)
+        local display=rawget(_G,"OJR_CompanionDisplay")
+        if display and pending_binding then display.restore_binding(pending_binding) end
+        if not pending_binding or not pending_binding.root_placed then
+            pawn_seat_physics.place(char,pending_binding and pending_binding.root_spec or seat_spec)
+            if pending_binding then pending_binding.root_placed=true end
+        end
         pawn_seat_physics.reset_fall(char)
     end
     if seat_spec.useDirectMotion and not force_anim_node then
@@ -1124,8 +1144,7 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
             local ok, err = pcall(function()
                 -- The companion FSM is temporarily enabled for this request.
                 if is_pawn then
-                    -- Initial seating and layout changes use the same request priority.
-                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, force_anim_node and 1 or 0)
+                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, legacy_switch and 0 or 1)
                 else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
             end)
             if not ok then error(err) end
@@ -1134,6 +1153,10 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
     end
     if is_pawn and pending_binding and diagnostics then
         pcall(diagnostics.mark_pose,pending_binding,seat_anchor_transform,'requested',pawn_seat_physics.frame or 0,runtime_clock)
+    end
+    if is_pawn and pending_binding then
+        local display=rawget(_G,"OJR_CompanionDisplay")
+        if display then display.apply(pending_binding,seat_anchor_transform) end
     end
 end
 
@@ -1146,18 +1169,6 @@ local function release_passengers_from_skill()
     for _,binding in ipairs(seat_bindings) do if binding.char~=player then passengers[#passengers+1]=binding.char end end
     seating_lock_active = false
     detach_bound_characters()
-
-    local cat = "Normal"
-    local ox = find_active_ox()
-    if ox then
-        local ct = find_cart_body(ox)
-        cat = classify_cart_model(ct)
-    end
-    
-    local idx = preset_cursor[cat] or 1
-    local preset = options.Presets[cat] and options.Presets[cat][idx]
-    if not preset then preset = options.Presets.Normal and options.Presets.Normal[1] end
-
 
     for _,pawn_character in ipairs(passengers) do
         if pawn_character and pawn_character ~= player and not companion_interacting(pawn_character) then
@@ -1175,18 +1186,6 @@ local function release_passengers_from_modifier()
     for _,binding in ipairs(seat_bindings) do if binding.char~=player then passengers[#passengers+1]=binding.char end end
     seating_lock_active = false
     detach_bound_characters()
-
-    local cat = "Normal"
-    local ox = find_active_ox()
-    if ox then
-        local ct = find_cart_body(ox)
-        cat = classify_cart_model(ct)
-    end
-    
-    local idx = preset_cursor[cat] or 1
-    local preset = options.Presets[cat] and options.Presets[cat][idx]
-    if not preset then preset = options.Presets.Normal and options.Presets.Normal[1] end
-
 
     for _,pawn_character in ipairs(passengers) do
         if pawn_character and pawn_character:get_Valid() and pawn_character ~= player and not companion_interacting(pawn_character) then
@@ -1230,12 +1229,21 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
 
     local party_members,_,guests=collect_companions()
     if not party_members then return end
-    local previous_slots,bound = {},{}
+    for _,binding in ipairs(seat_bindings) do
+        if binding.root_cart and binding.root_cart~=cart_transform then
+            detach_bound_characters();add_missing_only=false;break
+        end
+    end
+    local previous_slots,bound,previous = {},{},{}
     for _,binding in ipairs(seat_bindings) do
         bound[binding.char]=true
+        previous[binding.char]=binding
         if binding.char~=player then previous_slots[binding.char]=binding.slot end
     end
-    if not add_missing_only then detach_bound_characters() end
+    if not add_missing_only then
+        pawn_seat_physics.restore_player_display()
+        for i=#seat_bindings,1,-1 do if seat_bindings[i].char==player then table.remove(seat_bindings,i) end end
+    end
 
     if not manual_cart and not add_missing_only and preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
         table.insert(seat_bindings, {char = player, seat_spec = preset.player})
@@ -1245,6 +1253,9 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
     for _,ch in ipairs(party_members) do
         eligible[ch]=ch~=player and not companion_interacting(ch)
             and not (add_missing_only and (pawn_seat_physics.excluded or {})[ch])
+    end
+    for i=#seat_bindings,1,-1 do
+        if seat_bindings[i].char~=player and not eligible[seat_bindings[i].char] then pawn_seat_physics.remove(i) end
     end
     for _,ch in ipairs(party_members) do
         local slot=previous_slots[ch]
@@ -1260,15 +1271,25 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
             and not companion_interacting(pawn_character) then
             local physics_ready, physics_error = pcall(pawn_seat_physics.prepare, pawn_character)
             if physics_ready then
-                local binding = {char = pawn_character, seat_spec = preset.pawns[i],slot=i,guest=guests[pawn_character]==true}
+                local binding=previous[pawn_character]
+                if not binding then
+                    local base=options.Presets[cat][1].pawns[i]
+                    binding={char=pawn_character,slot=i,root_cart=cart_transform,
+                        root_spec={x=base.x,y=base.y,z=base.z,lookX=base.lookX,lookZ=base.lookZ}}
+                end
+                binding.seat_spec,binding.guest=preset.pawns[i],guests[pawn_character]==true
+                binding.pose_failed=nil
                 local ok, err = pcall(function()
                     start_seated_animation(pawn_character, preset.pawns[i],nil,binding,legacy_switch and previous_slots[pawn_character]~=nil)
-                    if not preset.pawns[i].useDirectMotion then binding.pose_node = preset.pawns[i].anim end
                 end)
                 local next_idle = preset.pawns[i].randomIdle and (runtime_clock + math.random() * 25 + 5) or nil
                 binding.next_idle_time = next_idle
-                if ok then table.insert(seat_bindings, binding)
+                if ok then
+                    if not previous[pawn_character] then table.insert(seat_bindings, binding) end
                 else
+                    if previous[pawn_character] then
+                        for index=#seat_bindings,1,-1 do if seat_bindings[index]==binding then table.remove(seat_bindings,index) end end
+                    end
                     pawn_seat_physics.restore_fsm(binding)
                     pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
                     pawn_seat_physics.excluded[pawn_character]=true
@@ -1276,6 +1297,12 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
                     log.error("[Oxcarts Journey Redux] Pawn pose request failed: " .. tostring(err))
                 end
             else
+                local old=previous[pawn_character]
+                if old then
+                    for index=#seat_bindings,1,-1 do
+                        if seat_bindings[index]==old then pawn_seat_physics.remove(index);break end
+                    end
+                end
                 pawn_seat_physics.excluded=pawn_seat_physics.excluded or {}
                 pawn_seat_physics.excluded[pawn_character]=true
                 log.error("[Oxcarts Journey Redux] Pawn seat skipped: " .. tostring(physics_error))
@@ -1298,9 +1325,9 @@ local function sit_with_next_preset()
     local cat = classify_cart_model(cart_transform)
     local presets = options.Presets[cat]
     if not presets or #presets == 0 then return end
-    -- First manual Sit starts at the first enabled preset for this cart family.
-    -- Later manual Sits advance; automatic reseating keeps the current preset.
-    local next_idx = last_sit_preset[cat] and (preset_cursor[cat] or 1) or 0
+    local companions_seated=false
+    for _,binding in ipairs(seat_bindings) do if binding.char~=player then companions_seated=true;break end end
+    local next_idx = (preset_cursor[cat] or 1)-(companions_seated and 0 or 1)
     for i = 1, #presets do
         next_idx = next_idx % #presets + 1
         if presets[next_idx].enabled and not (player_is_physically_seated(ox) and presets[next_idx].skipPassenger) then
@@ -1437,8 +1464,47 @@ local function cart_destination_brake_reason(ox, status)
     return cart_destination_probe(ox, status).reason
 end
 
+function pawn_seat_physics.driver_wait_reason(ox)
+    if not is_character_valid(ox) then return nil end
+    if manual_cart or (driving_bus.driver and driving_bus.driver.player_is_driver()) then return nil end
+    local ok,reason=pcall(function()
+        local status=npc_manager.OxcartManager:getStatus(ox:get_CharaID())
+        if not status then return "no NPC driver" end
+        local id=status:call("getCurrentDriver")
+        if not id or tonumber(id)==0 then return "no NPC driver" end
+        local driver=npc_manager:getCharacter(id)
+        if not is_character_valid(driver) then return "no NPC driver" end
+        if driver==player then return "player is not driving" end
+        local death_ok,dead=pcall(function() return driver:get_IsDead() end)
+        if death_ok and dead then return "NPC driver is dead" end
+        local controller=ox.EnemyCtrl.Ch2["<CachedOxcart>k__BackingField"]
+        local seat=controller and controller:call("get_DrivingSeat")
+        local occupant=seat and seat.SitChara
+        if not is_character_valid(occupant) or occupant:get_address()~=driver:get_address() then
+            return "NPC driver is not in driver seat"
+        end
+        if seat:call("isSit()")~=true then return "NPC driver is not fully seated" end
+        local body=find_cart_body(ox)
+        if not body then return nil end
+        local a,b=driver:get_Transform():get_Position(),body:get_Position()
+        if (a.x-b.x)^2+(a.y-b.y)^2+(a.z-b.z)^2>144 then return "NPC driver is away from cart" end
+    end)
+    if not ok then return "NPC driver seat state unavailable" end
+    return reason
+end
+
+local function trace_cart_event(kind,detail)
+    local observer=rawget(_G,"AelinoreOxcartTrace2")
+    if type(observer)=="function" then pcall(observer,kind,detail) end
+end
 local function request_cart_locomotion(ox, nodeName, isDash, automatic)
     if not ox then return end
+    local driver_wait=nodeName~="Wait" and pawn_seat_physics.driver_wait_reason(ox)
+    if driver_wait then
+        cart_trip.stop_reason="movement blocked: "..driver_wait
+        trace_cart_event("ojr_speed_rejected",{node=nodeName,reason=driver_wait})
+        return
+    end
     -- Do not immediately restart Dash inside the braking zone or during a stop.
     if isDash then
         local reason = cart_destination_brake_reason(ox)
@@ -1456,7 +1522,8 @@ local function request_cart_locomotion(ox, nodeName, isDash, automatic)
     if not movement_control.can_command(ox) then return end
     movement_control.issue(function() action_manager:requestActionCore(0, nodeName, 0) end)
     if not automatic then cart_trip.auto_paused = not isDash end
-    movement_control.hold(ox,nodeName,isDash and options.DASH_DURATION or 2,runtime_clock)
+    movement_control.hold(ox,nodeName,(isDash or nodeName=="Run") and options.DASH_DURATION or 2,runtime_clock)
+    trace_cart_event("ojr_speed_requested",{node=nodeName,automatic=automatic==true,t=runtime_clock})
     if isDash then
         cart_trip.departure_pending = false
         cart_trip.walk_since, cart_trip.walk_angle, cart_trip.walk_turn = nil, nil, 0
@@ -1471,6 +1538,7 @@ local function request_cart_locomotion(ox, nodeName, isDash, automatic)
         cart_trip.rush_requested_at = nil
         cart_trip.stopped_since = nil
     end
+    return true
 end
 
 local cart_battle_overrides = {
@@ -1609,6 +1677,9 @@ local function resolve_steering_cow(ox)
 end
 
 local function stop_cart_rush(ox, reason, exit_action, keep_live_action, force_exit_action)
+    trace_cart_event("ojr_stop",{reason=reason,exit_action=exit_action,keep_live_action=keep_live_action==true,
+        force_exit_action=force_exit_action==true,t=runtime_clock,rush_at=cart_trip.rush_requested_at})
+    cart_trip.manual_resume_at=nil
     movement_control.clear()
     if reason then
         cart_trip.stop_reason = reason
@@ -1628,27 +1699,21 @@ local function stop_cart_rush(ox, reason, exit_action, keep_live_action, force_e
     cart_trip.last_position_at = nil
 end
 
-local function release_passengers_for_cart_stop()
-    if not seating_lock_active then return end
-    local passengers = {}
-    for _, binding in ipairs(seat_bindings) do
-        if binding.char and binding.char ~= player then
-            table.insert(passengers, binding.char)
-        end
+function pawn_seat_physics.enforce_driver_wait(ox)
+    if gameplay_is_paused() then return false end
+    local reason=pawn_seat_physics.driver_wait_reason(ox)
+    if not reason then return false end
+    stop_cart_rush(nil,reason)
+    local manager=ox["<ActionManager>k__BackingField"]
+    local current=manager and manager.CurrentActionList and manager.CurrentActionList[0]
+    if current and movement_control.is_move(current.Name) and current.Name~="Wait" then
+        movement_control.issue(function() manager:requestActionCore(0,"Wait",0) end)
     end
-    seating_lock_active = false
-    detach_bound_characters()
-    for _, char in ipairs(passengers) do
-        if is_character_valid(char) then
-            pcall(function()
-                local action_manager = char["<ActionManager>k__BackingField"]
-                if action_manager then action_manager:requestActionCore(0, "Wait", 0) end
-            end)
-        end
-    end
+    return true
 end
 
 local function release_pawns_at_intermediate_stop(reason)
+    cart_trip.keep_standing_companions=nil
     pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
     -- Keep the player's seat binding; remove only followers.
@@ -1711,6 +1776,7 @@ end
 
 local function reset_trip_for_cart_change(ox)
     cart_trip.manual_speed,cart_trip.speed_input_frame=nil,nil
+    cart_trip.keep_standing_companions=nil
     -- A different cart must not inherit the previous actor's trip state.
     stop_cart_rush(ox, "cart changed: refresh live locomotion", nil, true)
     cart_trip.paid_status_address = nil
@@ -1892,11 +1958,11 @@ local function update_cart_trip(ox, physically_sitting)
         cart_trip.ox_address = ox:get_address()
     end
     if status then cart_trip.paid_status_address = status:get_address() end
-    -- Release followers beyond 8 units from the cart body center. An unreadable
+    -- Release followers beyond 15 units from the cart body center. An unreadable
     -- position is not evidence that the player has left the cart.
     local body_distance = player_cart_body_distance(ox)
-    if body_distance and body_distance > 8.0 then
-        release_pawns_at_intermediate_stop("player left cart body center beyond 8")
+    if body_distance and body_distance > 15.0 then
+        release_pawns_at_intermediate_stop("player left cart body center beyond 15")
     end
     -- Keep the existing paid-trip braking distance independent of pawn release.
     local player_distance = player_cart_distance(ox)
@@ -1922,12 +1988,22 @@ local function update_cart_trip(ox, physically_sitting)
         return
     end
     if physically_sitting == nil then physically_sitting = player_is_physically_seated(ox) end
-    if physically_sitting then cart_trip.manual_standing_seats = false end
+    if physically_sitting then
+        cart_trip.manual_standing_seats = false
+        cart_trip.keep_standing_companions=nil
+    end
     local standing_release = not physically_sitting and not cart_trip.manual_standing_seats
+        and not cart_trip.keep_standing_companions
+    if cart_trip.manual_resume_at and runtime_clock>=cart_trip.manual_resume_at then
+        cart_trip.manual_resume_at,cart_trip.manual_speed=nil,nil
+        cart_trip.auto_paused=false
+        reset_auto_walk()
+    end
     local action = get_cart_action(ox):lower()
     -- Give a newly queued Dash time to enter its action; an older request is not
     -- evidence that the actor is still dashing after the engine has selected Walk.
     if action == "walk" and cart_trip.rush_requested_at
+        and not (movement_control.command and movement_control.command.turning)
         and runtime_clock - cart_trip.rush_requested_at >= 0.5
         and not (cart_trip.rush_ack_until and runtime_clock < cart_trip.rush_ack_until) then
         stop_cart_rush(ox, "live Walk replaced requested rush", nil, true)
@@ -1995,6 +2071,13 @@ local function update_cart_trip(ox, physically_sitting)
     if destination.reason and not (destination.waiting and cart_trip.departure_pending
         and not cart_trip.stopover_wait_armed) then cart_trip.braked_for_destination = true end
     if arrived then cart_trip.final_arrival_seen = true end
+    local command=movement_control.command
+    if command and command.node=="Run" and destination.reason then
+        local exit_action=destination.waiting and "Wait" or "Walk"
+        stop_cart_rush(ox,destination.reason,exit_action,false,true)
+        cart_trip.braked_for_destination=true
+        return
+    end
     if not cart_trip.rush_requested_at then
         update_auto_rush(ox, status, destination, physically_sitting)
         return
@@ -2015,6 +2098,13 @@ local function update_cart_trip(ox, physically_sitting)
         local exit_action = brake_reason == "intermediate stop waiting timer active" and "Wait" or "Walk"
         stop_cart_rush(ox, brake_reason, exit_action)
         cart_trip.braked_for_destination = true
+        return
+    end
+
+    if movement_control.command and movement_control.command.turning then
+        -- Turning in place is not a stalled Dash. Keep arrival/duration checks
+        -- above, but restart the movement sample after native turning finishes.
+        cart_trip.stopped_since,cart_trip.last_position,cart_trip.last_position_at=nil,nil,nil
         return
     end
 
@@ -2086,16 +2176,12 @@ local function enforce_seat_transforms(ox, position_only)
             local anchor_transform = seat_anchor_transform
             if anchor_transform then
                 local updated, update_error = pcall(function()
-                    pawn_seat_physics.place(character,seat_spec)
-                    local fall_test=rawget(_G,"OJR_DebugFallResetTest")
-                    if not position_only and character~=player and type(fall_test)=="table" and fall_test.enabled==true then
-                        local reset_ok,reset_error=pcall(pawn_seat_physics.reset_fall,character)
-                        if reset_ok then
-                            fall_test.resets=(fall_test.resets or 0)+1
-                        else
-                            fall_test.errors=(fall_test.errors or 0)+1
-                            fall_test.last_error=tostring(reset_error)
-                        end
+                    if character==player or not position_only then
+                        pawn_seat_physics.place(character,binding.root_spec or seat_spec)
+                    end
+                    if character~=player then
+                        local display=rawget(_G,"OJR_CompanionDisplay")
+                        if display then display.apply(binding,seat_anchor_transform) end
                     end
                 end)
                 if not updated and binding.position_error ~= tostring(update_error) then
@@ -2144,28 +2230,41 @@ driving_bus.journey = {
     end,
     pelvis_tick = function()
         local compensation=rawget(_G,"OJR_UnifiedPelvis")
-        if compensation then compensation.tick(seat_bindings,seat_anchor_transform,player,options.COMPANION_PELVIS_COMPENSATION==true and seating_lock_active,runtime_clock) end
+        if compensation then compensation.tick(seat_bindings,seat_anchor_transform,player,seating_lock_active,runtime_clock) end
     end,
     passenger_active = function()
         return not external_driver_active() and player_is_cart_passenger(find_active_ox())
+    end,
+    passenger_camera = function()
+        local ox=find_active_ox()
+        if external_driver_active() or not player_is_cart_passenger(ox) then return end
+        local body=find_cart_body(ox)
+        if not body then return end
+        local family=classify_cart_model(body)
+        local preset=options.Presets[family][preset_cursor[family] or 1]
+        return unified_presets.camera_for(preset,true),ox:get_address()
     end,
     stand = release_passengers_from_skill,
     resume_auto = function()
         if external_driver_active() or not player_is_cart_passenger(find_active_ox()) then return false end
         cart_trip.manual_speed,cart_trip.auto_paused=nil,false
+        cart_trip.manual_resume_at=nil
         reset_auto_walk()
         return true
     end,
     speed_step = function(delta)
         if external_driver_active() or not player_is_cart_passenger(find_active_ox()) then return end
+        local ox=find_active_ox()
+        if not is_character_valid(ox) or pawn_seat_physics.driver_wait_reason(ox) then return end
         local frame=pawn_seat_physics.frame
         if cart_trip.speed_input_frame==frame then return end
         cart_trip.speed_input_frame=frame
-        local ox=find_active_ox()
         local speed=assert(rawget(_G,"OJR_UnifiedSpeed"))
         local level=speed.next(speed.level(get_cart_action(ox)),delta)
-        cart_trip.manual_speed=true
-        request_cart_locomotion(ox,speed.modes[level],level==4)
+        if request_cart_locomotion(ox,speed.modes[level],level==4) then
+            cart_trip.manual_speed=true
+            cart_trip.manual_resume_at=level==4 and (runtime_clock+5) or nil
+        end
     end,
     release = function()
         release_pawns_at_intermediate_stop("explicit companion release")
@@ -2182,6 +2281,7 @@ driving_bus.journey = {
         cart_trip.manual_speed=nil
         cart_trip.pause={active=false,resume_pending=false}
         prior_player_seat_state=false
+        prior_cart_seat_state=false
         _G.OJR_ReseatPending=false
         reseat_requested_at=nil
         manual_cart=cart
@@ -2206,6 +2306,7 @@ driving_bus.journey = {
         last_clock_sample=os.clock()
     end,
     manual_tick = function()
+        update_runtime_clock()
         pawn_seat_physics.advance_frame()
         player=character_manager["<ManualPlayer>k__BackingField"]
         if not manual_cart then return end
@@ -2220,7 +2321,6 @@ driving_bus.journey = {
             if driving_bus.driver then driving_bus.driver.abort() else driving_bus.journey.end_manual() end
             return
         end
-        update_runtime_clock()
         if gameplay_is_paused() then
             if photo_mode_is_open() then enforce_seat_transforms(cart.ox,true) end
             return
@@ -2239,6 +2339,26 @@ driving_bus.journey = {
         for _,r in ipairs(seat_bindings) do if r.char==ch then return manual_cart,r.slot+1 end end
     end,
     records = function() return seat_bindings end,
+    diagnostic_state = function()
+        local command=movement_control.command
+        return {t=runtime_clock,manual=manual_cart~=nil,auto_paused=cart_trip.auto_paused,
+            manual_speed=cart_trip.manual_speed==true,manual_resume_at=cart_trip.manual_resume_at,
+            stop_reason=cart_trip.stop_reason,auto_reason=cart_trip.auto_reason,
+            rush_at=cart_trip.rush_requested_at,rush_ack_until=cart_trip.rush_ack_until,
+            departure_pending=cart_trip.departure_pending,has_moved=cart_trip.has_moved_in_rush,
+            stopped_since=cart_trip.stopped_since,last_check_at=cart_trip.last_check_at,
+            pause=cart_trip.pause.active,resume_pending=cart_trip.pause.resume_pending,
+            destination=cart_trip.destination and {reason=cart_trip.destination.reason,distance=cart_trip.destination.distance,
+                final_distance=cart_trip.destination.final_distance,waiting=cart_trip.destination.waiting},
+            speed=command and {node=command.node,until_time=command.until_time,address=tostring(command.address)},
+            seat_bindings=#seat_bindings}
+    end,
+    enforce_driver_wait = pawn_seat_physics.enforce_driver_wait,
+    seat_anchor = function(character)
+        for _,binding in ipairs(seat_bindings) do
+            if binding.char==character then return seat_anchor_transform end
+        end
+    end,
     passenger_layout = function()
         local ox = find_active_ox()
         local family = classify_cart_model(find_cart_body(ox))
@@ -2317,6 +2437,7 @@ re.on_application_entry("LateUpdateBehavior", function()
         return
     end
     if manual_cart then driving_bus.journey.end_manual() end
+    update_runtime_clock()
     pawn_seat_physics.advance_frame()
     if journey_handoff.suspended then driving_bus.journey.resume() end
     local ox = find_active_ox()
@@ -2330,7 +2451,6 @@ re.on_application_entry("LateUpdateBehavior", function()
         return
     end
     input = player:get_Input()
-    update_runtime_clock()
 
     local in_photo_mode = photo_mode_is_open()
 
@@ -2392,16 +2512,27 @@ re.on_application_entry("LateUpdateBehavior", function()
 
     local is_near = ox and player_is_near_cart(ox) or false
     
-    -- The per-frame trip check handles confirmed >8 body-center distance and releases only
+    -- The per-frame trip check handles confirmed >15 body-center distance and releases only
     -- followers, without requiring a previous near -> far transition.
-    prior_cart_proximity = is_near
 
     local sitting = player_is_cart_passenger(ox)
     if not sitting then passenger_hud:restore() end
     local physically_sitting = player_is_physically_seated(ox)
+    if not prior_cart_seat_state and physically_sitting and sitting then
+        local action=get_cart_action(ox):lower()
+        local companions_seated=false
+        for _,binding in ipairs(seat_bindings) do
+            if binding.char~=player and is_character_valid(binding.char) then companions_seated=true;break end
+        end
+        if not companions_seated and (action=="wait" or action=="walk") then
+            bind_pawns_to_seats(true) -- One entry-edge request; keep the selected layout.
+        end
+    end
     
     if prior_player_seat_state and not physically_sitting then
-        release_pawns_at_intermediate_stop("player ended passenger interaction")
+        local action=get_cart_action(ox):lower()
+        if action=="run" or action=="dash" then cart_trip.keep_standing_companions=true
+        else release_pawns_at_intermediate_stop("player ended passenger interaction") end
         if seat_bindings and #seat_bindings > 0 then
             for i = #seat_bindings, 1, -1 do
                 if seat_bindings[i].char == player then
@@ -2416,7 +2547,22 @@ re.on_application_entry("LateUpdateBehavior", function()
     prior_player_seat_state = physically_sitting
     prior_cart_seat_state = sitting
     
+    pawn_seat_physics.enforce_driver_wait(ox)
     update_cart_trip(ox, physically_sitting)
+    local command=movement_control.command
+    if command and (command.turning or get_cart_action(ox)=="TurnTarget") and not pawn_seat_physics.driver_wait_reason(ox)
+        and not cart_destination_brake_reason(ox) then
+        local ok,resumed=pcall(movement_control.resume_turn,ox,runtime_clock,false,function(node)
+            ox:get_ActionManager():requestActionCore(0,node,0)
+        end)
+        if not ok then
+            stop_cart_rush(nil,"TurnTarget speed restoration failed")
+            log.error("[OJR] TurnTarget speed restoration failed: "..tostring(resumed))
+        elseif resumed then
+            cart_trip.rush_ack_until=runtime_clock+0.5
+            trace_cart_event("ojr_turn_resumed",{node=resumed,t=runtime_clock})
+        end
+    end
 
     -- Maintain seat transforms after gameplay state changes have settled.
     enforce_seat_transforms(ox, false)
@@ -2529,6 +2675,13 @@ local function draw_seat_editor(label, seat_spec, position_only)
         if c5 then seat_spec.lookZ = v5; persist_options() end
         
         if not position_only then
+            local c_pc,v_pc=imgui.checkbox("Lock Height",seat_spec.pelvisCompensation==true)
+            if c_pc then seat_spec.pelvisCompensation=v_pc;persist_options() end
+            imgui.same_line()
+            imgui.text("[?]")
+            if imgui.is_item_hovered() then
+                imgui.set_tooltip("Disabled by default. Enable only if some seated animations cause vertical height jitter.")
+            end
             local c_idle, v_idle = imgui.checkbox("Random Idle", seat_spec.randomIdle)
             if c_idle then seat_spec.randomIdle = v_idle; persist_options() end
             imgui.same_line()
@@ -2728,6 +2881,7 @@ re.on_draw_ui(function()
                                     driving_bus.driver.draw_player(preset)
                                 else
                                     draw_seat_editor(nil,preset.player,true)
+                                    if driving_bus.driver and driving_bus.driver.draw_camera then driving_bus.driver.draw_camera(preset,true) end
                                 end
                                 imgui.tree_pop()
                             end
@@ -2754,44 +2908,53 @@ end)
 sdk.hook(
     sdk.find_type_definition("app.ActionManager"):get_method("requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)"),
     function(args)
-        local this = sdk.to_managed_object(args[2])
-        if external_driver_active() then return end
-        local owner = this:get_GameObject()
-        if not owner:get_Valid() then return end      
+        local ok,result=pcall(function()
+            local this = sdk.to_managed_object(args[2])
+            if external_driver_active() then return end
+            local owner = this:get_GameObject()
+            if not owner or not owner:get_Valid() then return end      
         
-        local char = owner:call("getComponent(System.Type)", sdk.typeof("app.Character"))
-        if not char then return end
+            local char = owner:call("getComponent(System.Type)", sdk.typeof("app.Character"))
+            if not char then return end
         
-        local nodeName = sdk.to_managed_object(args[4]):ToString()
-        local n = nodeName:lower()
+            local nodeName = sdk.to_managed_object(args[4]):ToString()
+            local n = nodeName:lower()
 
-        if seating_lock_active and not cart_trip.pause.active and not cart_trip.pause.resume_pending
-            and not gameplay_is_paused() then
-            if char == player then
-                if n:find("warp") or n:find("ferry") or n:find("item") then
-                    seating_lock_active = false
-                    detach_bound_characters()
-                end
-            end
-            
-            for i, p in ipairs(seat_bindings) do
-                if p.char == char then
-                    local staggers = {"caught"}
-                    for _, str in ipairs(staggers) do
-                        if n:find(str) then
-                            pawn_seat_physics.remove(i)
-                            break
-                        end
+            if seating_lock_active and not cart_trip.pause.active and not cart_trip.pause.resume_pending
+                and not gameplay_is_paused() then
+                if char == player then
+                    if n:find("warp") or n:find("ferry") or n:find("item") then
+                        seating_lock_active = false
+                        detach_bound_characters()
                     end
-                    break
+                end
+            
+                for i, p in ipairs(seat_bindings) do
+                    if p.char == char then
+                        local staggers = {"caught"}
+                        for _, str in ipairs(staggers) do
+                            if n:find(str) then
+                                pawn_seat_physics.remove(i)
+                                break
+                            end
+                        end
+                        break
+                    end
                 end
             end
-        end
 
-        local suspended=cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused()
-        if movement_control.blocks(char,nodeName,sdk.to_int64(args[5]) & 0xffffffff,runtime_clock,suspended) then
-            return sdk.PreHookResult.SKIP_ORIGINAL
-        end
+            if (sdk.to_int64(args[5]) & 0xffffffff)==0 and (nodeName=="Walk" or nodeName=="Run" or nodeName=="Dash")
+                and char==find_active_ox() and not gameplay_is_paused() and pawn_seat_physics.driver_wait_reason(char) then
+                trace_cart_event("ojr_request_blocked",{node=nodeName,reason="no seated driver"})
+                return sdk.PreHookResult.SKIP_ORIGINAL
+            end
+            local suspended=cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused()
+            if movement_control.blocks(char,nodeName,sdk.to_int64(args[5]) & 0xffffffff,runtime_clock,suspended) then
+                trace_cart_event("ojr_request_blocked",{node=nodeName,reason="speed hold"})
+                return sdk.PreHookResult.SKIP_ORIGINAL
+            end
+        end)
+        if ok then return result end -- Unreadable requests must remain native.
     end
 )
 
@@ -2808,7 +2971,12 @@ sdk.hook(
 )
 
 local cart_protection=assert(rawget(_G,"OJR_CartProtection"))
-local protection_test=cart_protection.new(function(message)
+local protection_test=cart_protection.new(function(message,key)
+    if rawget(_G,"OJR_EnableRuntimeDiagnostics")~=true then
+        if message:find('failed',1,true) or key=='parts'
+            or (key=='part-hook' and message:find('unavailable',1,true)) then log.warn(message) end
+        return
+    end
     if log.info then log.info(message) else log.warn(message) end
     if rawget(_G,"OJR_RuntimeDiagnostics") then _G.OJR_RuntimeDiagnostics.write('protection',{message=message}) end
 end)
@@ -2872,6 +3040,28 @@ function pawn_seat_physics.update_cart_protection()
     end,now)
 end
 re.on_application_entry('UpdateBehavior',pawn_seat_physics.update_cart_protection)
+
+cart_protection.install_destroy_guard(function()
+    -- Live native occupancy only: no delayed trip flags or motion-name fallback.
+    if not is_character_valid(player) then return end
+    local ox=find_active_ox()
+    if not is_character_valid(ox) then return end
+    local controller=ox.EnemyCtrl.Ch2['<CachedOxcart>k__BackingField']
+    if not cart_protection.valid(controller) then return end
+    local seat=controller:call('get_DrivingSeat')
+    local occupant=seat and seat.SitChara
+    local driver_seated=seat and seat:call('isSit()')==true
+    local riding=controller:call('isPlayerSit()')==true
+        or (driver_seated and cart_protection.same(occupant,player))
+    if not riding then return end
+    local manager=npc_manager.OxcartManager
+    local status=manager:getStatus(ox:get_CharaID())
+    return {riding=true,loading=gui_manager:call('get_IsLoadGui()'),
+        fast_travel=manager:call('getFastTravelState()'),ox_id=ox:get_CharaID(),
+        driver_id=driver_seated and occupant and not cart_protection.same(occupant,player)
+            and occupant:get_CharaID() or nil,
+        container=status and status['<CachedGenerateContainer>k__BackingField']}
+end,function(key,message) protection_test:report(key,message) end)
 
 -- Prevent only the active nearby cart's native breakup; no repair or reconnect.
 function pawn_seat_physics.prevent_cart_breakup(component)
@@ -2952,6 +3142,7 @@ function pawn_seat_physics.protection_for(info)
     return ok and rule or nil
 end
 function pawn_seat_physics.record_damage(stage,controller,info,rule)
+    if rawget(_G,"OJR_EnableRuntimeDiagnostics")~=true then return end
     local ok,err=pcall(function()
         local function read(fn) local success,value=pcall(fn);if success then return value end end
         local function describe(go)

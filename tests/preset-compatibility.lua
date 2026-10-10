@@ -59,7 +59,10 @@ local function field(label,value)
     if label=='Use Direct Motion' then assert(previous_label=='Random Idle' and same_line,'Random Idle must be directly left of Use Direct Motion') end
     labels[label]=true;previous_label=label;same_line=false;return false,value
 end
+local tooltip,hovered=nil,false
 local imgui={tree_node=function() return true end,tree_pop=function() end,
+    text=function(label) labels[label]=true end,is_item_hovered=function() return hovered end,
+    set_tooltip=function(value) tooltip=value end,
     checkbox=field,drag_float=field,drag_int=field,input_text=field,same_line=function() same_line=true end}
 -- EDITOR IMPLEMENTATION --
 draw_seat_editor('Player',old.player,true)
@@ -69,4 +72,8 @@ old.pawns[1].useDirectMotion=false
 draw_seat_editor('Pawn',old.pawns[1])
 assert(not labels['Freeze AI'] and not labels['Use Ox Anchor'])
 assert(labels['Random Idle'] and labels['Use Direct Motion'] and labels['X (Left/Right)'])
+assert(labels['Lock Height'] and labels['[?]'] and not labels['Pelvis height compensation'])
+assert(tooltip==nil,'Help appeared without hover')
+hovered=true;draw_seat_editor('Pawn',old.pawns[1])
+assert(tooltip=='Disabled by default. Enable only if some seated animations cause vertical height jitter.')
 print('PASS: grouped/flat legacy presets, removed flags, custom values, save, new preset copy and seat editor')

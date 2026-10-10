@@ -35,6 +35,27 @@ for _,node in ipairs({'Die','Jump','QuestAction','UnknownAction'}) do
 end
 speed.hold(ox,'Dash',10,100)
 assert(not speed.blocks(ox,'Walk',0,110,false),'Expiry boundary')
+for _,node in ipairs({'Run','Dash'}) do
+    ox['<ActionManager>k__BackingField'].CurrentActionList[0].Name=node
+    speed.hold(ox,node,10,100)
+    local lease=speed.command
+    assert(speed.blocks(ox,'TurnTarget',0,101,false) and speed.command==lease and not lease.turning)
+    assert(not speed.blocks(ox,'TurnTarget',1,101,false),'Upper-layer turn blocked')
+    assert(not speed.blocks(ox,'TurnTarget',0,101,true),'Paused turn blocked')
+    speed.issue(function() assert(not speed.blocks(ox,'TurnTarget',0,101,false),'Own native action blocked') end)
+    ox['<ActionManager>k__BackingField'].CurrentActionList[0].Name='TurnTarget'
+    local n=0
+    local function request(value) n=n+1;assert(value==node);ox['<ActionManager>k__BackingField'].CurrentActionList[0].Name=value end
+    assert(not speed.resume_turn(ox,102,true,request),'Paused repair')
+    ox.damaged=true;assert(not speed.resume_turn(ox,102,false,request));ox.damaged=false
+    assert(speed.resume_turn(ox,102,false,request)==node and n==1 and lease.until_time==110)
+    assert(not speed.resume_turn(ox,102,false,request) and n==1,'Repair repeated')
+    assert(speed.blocks(ox,'Walk',0,102,false),'Native deceleration passed after turn rejection')
+end
+ox['<ActionManager>k__BackingField'].CurrentActionList[0].Name='Walk'
+speed.hold(ox,'Walk',10,100);assert(not speed.blocks(ox,'TurnTarget',0,101,false),'Walking turn blocked')
+speed.hold(ox,'Dash',10,100);ox.damaged=true
+assert(not speed.blocks(ox,'TurnTarget',0,101,false) and not speed.command,'Damage did not release turn guard');ox.damaged=false
 speed.hold(ox,'Dash',10,100);speed.expire(other,101);assert(not speed.command,'Cart change retained command')
 local ok=pcall(function() speed.issue(function() error('injected') end) end)
 assert(not ok and speed.issuing==0,'Failed request leaked own-command bypass')

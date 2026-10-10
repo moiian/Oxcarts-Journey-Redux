@@ -66,7 +66,7 @@ local p=pawn:get_Transform().position
 assert(p.x==12 and math.abs(p.y-20)<0.0001 and p.z==35,'Preset coordinate convention changed')
 assert(pawn:get_Transform().up==axisY,'Cart tilt no longer preserved')
 calls={};enforce_seat_transforms(nil,true)
-assert(#calls==2,'Photo mode reset fall or lost position synchronization')
+assert(#calls==0,'Photo mode wrote companion physics')
 p=pawn:get_Transform().position
 calls={};pawn_seat_physics.release(pawn)
 assert(#calls==2 and pawn:get_Transform().position==p,'Release teleported pawn or reset fall')

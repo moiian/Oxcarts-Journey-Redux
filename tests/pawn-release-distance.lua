@@ -19,14 +19,14 @@ local function check()
 -- RELEASE CHECK --
 end
 
-player_position.x=8;check();assert(releases==0,'Exactly 8 should not release')
-player_position.x=8.01;check();assert(releases==1 and brakes==0,'Beyond body center 8 should release only pawns')
+player_position.x=15;check();assert(releases==0,'Exactly 15 should not release')
+player_position.x=15.01;check();assert(releases==1 and brakes==0,'Beyond body center 15 should release only pawns')
 body_position.x=100;player_position.x=100;ox_distance=10;check()
 assert(releases==1,'Player next to cart body should not release based on ox distance')
-player_position.y=9;check();assert(releases==2,'Body-center distance must include height')
+player_position.y=16;check();assert(releases==2,'Body-center distance must include height')
 body_available=false;check();assert(releases==2,'Unknown body position must not release')
 body_available=true;player_position.y=0;ox_distance=15;check()
 assert(brakes==0,'Exactly 15 must not brake')
 ox_distance=15.01;check()
 assert(releases==2 and brakes==1,'Paid-trip brake beyond ox distance 15 should remain independent')
-print('PASS: body-center release >8, exact boundary, height, unreadable body and independent paid-trip brake')
+print('PASS: body-center release >15, exact boundary, height, unreadable body and independent paid-trip brake')

@@ -1,3 +1,4 @@
+_G.OJR_EnableRuntimeDiagnostics=true
 local writes=0
 local paths={}
 local function copy(value)

@@ -27,7 +27,7 @@ $switchFixture.Replace('-- IMPLEMENTATION --',$switchImplementation).Replace('--
 if ($LASTEXITCODE -ne 0) { throw 'OJR preset switching tests failed' }
 $bodyStart = $source.IndexOf('local function player_cart_body_distance(')
 $bodyEnd = $source.IndexOf('local function update_cart_normal_guard(', $bodyStart)
-$releaseStart = $source.IndexOf('    -- Release followers beyond 8 units')
+$releaseStart = $source.IndexOf('    -- Release followers beyond 15 units')
 $releaseEnd = $source.IndexOf('    -- Damage/rollover', $releaseStart)
 if ($bodyStart -lt 0 -or $bodyEnd -lt 0 -or $releaseStart -lt 0 -or $releaseEnd -lt 0) { throw 'Distance test boundaries not found' }
 $distanceFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'pawn-release-distance.lua') -Raw

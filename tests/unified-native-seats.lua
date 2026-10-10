@@ -9,9 +9,9 @@ local function assert_native_facing(ch,anchor,slot,actor_rotation)
         'Position-only diagnostic changed native rotation')
 end
 -- Isolate earlier seat/drive tests from the automatic pawn staging integration.
-local real_stage,real_pawn_command=driver_debug_bridge.native_pawns_stage,driver_debug_bridge.native_pawns_command
-driver_debug_bridge.native_pawns_stage=function() return {} end
-driver_debug_bridge.native_pawns_command=function() return true end
+local real_stage,real_pawn_command=driver_runtime.native_pawns_stage,driver_runtime.native_pawns_command
+driver_runtime.native_pawns_stage=function() return {} end
+driver_runtime.native_pawns_command=function() return true end
 local interacting,active=false,nil
 local requests,exits,refs=0,0,0
 local expected_exit_actor=human
@@ -71,49 +71,49 @@ state.active=false;is_paused=false
 local position,warps,falls,fsm=human.pos,human.test_controller.warps,human.test_fall.reset_calls,human.machine.enabled
 local unseated_warps=driver.test_controller.warps
 local function command(value)
-    assert(driver_debug_bridge.native_seat_command(value));clock=clock+0.2;driver_debug_bridge.native_seat_tick()
+    assert(driver_runtime.native_seat_command(value));clock=clock+0.2;driver_runtime.native_seat_tick()
 end
 command('scan')
-assert(#driver_debug_bridge.native_seat_read().rows==6 and requests==0 and data.mask==8,driver_debug_bridge.native_seat_read().status)
-local rows=driver_debug_bridge.native_seat_read().rows
+assert(#driver_runtime.native_seat_read().rows==6 and requests==0 and data.mask==8,driver_runtime.native_seat_read().status)
+local rows=driver_runtime.native_seat_read().rows
 assert(rows[1].native_is_driver and not rows[1].driver_candidate and rows[2].driver_candidate
     and rows[2].seat_no==-1 and not rows[3].driver_candidate,'Native negative-seat driver mapping failed')
 left_enabled=true;command('scan')
-rows=driver_debug_bridge.native_seat_read().rows
-assert(rows[1].driver_candidate and rows[2].driver_candidate and driver_debug_bridge.native_seat_read().status:find('point 0',1,true),
+rows=driver_runtime.native_seat_read().rows
+assert(rows[1].driver_candidate and rows[2].driver_candidate and driver_runtime.native_seat_read().status:find('point 0',1,true),
     'Two native driver entrances were treated as ambiguous')
 left_enabled=false
 driver_mapping_available=false;command('enter')
-assert(requests==0 and data.mask==8 and not driver_debug_bridge.native_seat_busy(),'Unreadable mapping guessed point')
+assert(requests==0 and data.mask==8 and not driver_runtime.native_seat_busy(),'Unreadable mapping guessed point')
 driver_mapping_available=true;driver_points_enabled=false;command('enter')
-assert(requests==0 and data.mask==8 and not driver_debug_bridge.native_seat_busy(),'No driver entrance used passenger fallback')
+assert(requests==0 and data.mask==8 and not driver_runtime.native_seat_busy(),'No driver entrance used passenger fallback')
 assert(driver.test_controller.warps==unseated_warps,'Invalid driver entrance teleported nearby NPC')
 driver_points_enabled=true
 seat.SitChara=driver;command('enter')
-assert(requests==0 and not driver_debug_bridge.native_seat_busy(),'Occupied seat accepted')
+assert(requests==0 and not driver_runtime.native_seat_busy(),'Occupied seat accepted')
 seat.SitChara=nil;command('enter')
 assert(requests==1 and data.mask==9 and left_data.mask==10 and refs==1,'Player flag/request missing or other entrance changed')
 assert(driver.test_controller.warps==unseated_warps+1 and math.abs(driver.pos.z-body.pos.z)==500,
     'Nearby unseated driver was not physically relocated once behind cart')
-result.value=1;clock=clock+0.2;driver_debug_bridge.native_seat_tick()
-assert(data.mask==8 and left_data.mask==10 and refs==0 and not driver_debug_bridge.native_seat_busy(),'Denied request leaked mask/lease')
+result.value=1;clock=clock+0.2;driver_runtime.native_seat_tick()
+assert(data.mask==8 and left_data.mask==10 and refs==0 and not driver_runtime.native_seat_busy(),'Denied request leaked mask/lease')
 result.value=0;command('enter')
 interacting=true;active={Point={Object=io,PointNo=1}};seat.SitChara=human
-clock=clock+0.2;driver_debug_bridge.native_seat_tick()
-assert(driver_debug_bridge.native_seat_read().status:find('CONFIRMED',1,true),'Native binding not confirmed')
+clock=clock+0.2;driver_runtime.native_seat_tick()
+assert(driver_runtime.native_seat_read().status:find('CONFIRMED',1,true),'Native binding not confirmed')
 assert(state.native_drive and not state.active and #state.seats==0 and bus.owner==TITLE,
     'Native driving reused legacy seat ownership')
 do
-    local q,exit_original=state.native_drive,driver_debug_bridge.native_pawns_exit
+    local q,exit_original=state.native_drive,driver_runtime.native_pawns_exit
     local pawn_exits=0
-    driver_debug_bridge.native_pawns_exit=function() pawn_exits=pawn_exits+1;return true end
+    driver_runtime.native_pawns_exit=function() pawn_exits=pawn_exits+1;return true end
     input={keyboard=0,stick=0,pawn_stand=true}
     callbacks.LateUpdateBehavior()
     assert(pawn_exits==1 and state.native_drive==q and bus.owner==TITLE and not q.player_preset_disabled,
         'Pawn-only stand changed player control or did not call pawn exit')
-    driver_debug_bridge.native_pawns_exit=exit_original
+    driver_runtime.native_pawns_exit=exit_original
 end
-assert(not driver_debug_bridge.native_seat_command('enter') and state.native_drive,
+assert(not driver_runtime.native_seat_command('enter') and state.native_drive,
     'Repeated entry disrupted existing native ownership')
 for _,layout in ipairs(settings.presets) do assert(not layout.native_default,'Read-only Default survived migration') end
 local original_camera=copy_camera(current_camera())
@@ -134,7 +134,7 @@ assert(camera.fov==60 and camera_manager._DistanceOffset==1 and camera_transform
     'Camera overrides applied before boarding delay')
 local original_ready=state.native_drive.ready_at
 local original_visual_ready=state.native_drive.visual_ready_at
-driver_debug_bridge.native_boarding_pause(2)
+driver_runtime.native_boarding_pause(2)
 assert(state.native_drive.ready_at==original_ready+2 and state.native_entry_ready_at==original_ready+2,
     'Pause did not preserve eight seconds of game-time boarding')
 assert(state.native_drive.visual_ready_at==original_visual_ready+2,'Pause advanced player preset countdown')
@@ -143,7 +143,7 @@ clock=clock+2
 local function drive(keys)
     input={keyboard=0,stick=0}
     for k,v in pairs(keys or {}) do input[k]=v end
-    driver_debug_bridge.native_drive_tick(0.1)
+    driver_runtime.native_drive_tick(0.1)
 end
 drive({up=true})
 assert(state.native_drive.drive.level==1 and ox.am.CurrentActionList[0].Name=='Wait','Boarding wait accepted acceleration')
@@ -155,7 +155,7 @@ assert(state.native_drive.drive.level==1 and ox.am.CurrentActionList[0].Name=='W
 assert(camera.fov==60 and camera_manager._DistanceOffset==1,
     'Player presets applied at five seconds instead of eight')
 local movement_ready=state.native_drive.ready_at
-clock=clock+1;driver_debug_bridge.native_boarding_pause(1)
+clock=clock+1;driver_runtime.native_boarding_pause(1)
 assert(state.native_drive.ready_at==movement_ready+1 and state.native_drive.visual_ready_at==original_visual_ready+3,
     'Pause did not preserve both eight-second delays')
 clock=clock+3
@@ -165,6 +165,19 @@ assert(camera.fov==80 and camera_manager._DistanceOffset==3 and camera_transform
 callbacks.PrepareRendering()
 assert(camera_transform.pos.x==7,'Rendering changed camera position')
 assert(hooks['freeGetOff']==nil,'Unsafe early-departure hook was retained')
+do
+    local q=state.native_drive
+    q.drive.level=4;ox.am.CurrentActionList[0].Name='Dash'
+    drive()
+    ox.am:requestActionCore(10,'TurnTarget',0)
+    assert(ox.am.CurrentActionList[0].Name=='Dash','Native driver accepted turn deceleration')
+    ox.am.CurrentActionList[0].Name='TurnTarget'
+    drive()
+    assert(ox.am.CurrentActionList[0].Name=='Dash' and speed_control.command.node=='Dash',
+        'Native driver tick discarded speed while already turning')
+    q.drive.level=1;drive()
+end
+
 assert(native_camera_ready(),'Player presets disabled while still in driver seat')
 pre_callbacks.UpdateBehavior()
 assert(camera_transform.pos.x==7 and (human.pos-position):length()==0,'Player display Transform was not restored before simulation')
@@ -201,7 +214,7 @@ pre_callbacks.UpdateBehavior();pre_callbacks.PrepareRendering();callbacks.Prepar
 assert((human.pos-photo_target):length()==0,'Photo pre-render fallback lost Transform preset')
 pre_callbacks.PrepareRendering()
 assert((human.pos-photo_target):length()==0,'Repeated photo rendering accumulated player offset')
-driver_debug_bridge.native_visual_restore()
+driver_runtime.native_visual_restore()
 assert((human.pos-position):length()==0,'Photo display restoration lost native position')
 pre_callbacks.PrepareRendering()
 human.test_joint.set_Position=old_joint_write
@@ -224,11 +237,14 @@ mgr.call=function(self,method,ch,...)
     if ch~=human and method=='isInteracting(app.Character)' then return false end
     return player_interact_call(self,method,ch,...)
 end
-driver_debug_bridge.native_pawns_command=real_pawn_command
+driver_runtime.native_pawns_command=real_pawn_command
 bus.journey.manual_tick()
 assert(real_pawn_command(true,state.native_drive.cart))
 local bindings=_G.OJR_SeatBindings
 assert(#bindings==3,"Shared manual seats did not acquire three companions")
+local shared_anchor=bus.journey.seat_anchor(bindings[1].char)
+assert(shared_anchor and bus.journey.seat_anchor({})==nil,'Anchor probe guessed an unbound character anchor')
+for _,r in ipairs(bindings) do assert(bus.journey.seat_anchor(r.char)==shared_anchor,'Companions do not share the actual seat anchor') end
 for _,r in ipairs(bindings) do
     assert(r.fsm_machine and r.fsm_machine.enabled==true,"Seat event must unfreeze first")
     assert(r.char.test_fall.reset_calls==1,"One fall reset required on first seat")
@@ -244,14 +260,26 @@ for _,r in ipairs(bindings) do
     assert(samples[4].phase=='after-freeze' and samples[4].fsm_enabled==false,"Post-freeze checkpoint misplaced")
 end
 local first=settings.preset
-assert(driver_debug_bridge.switch_preset(nil,true))
+local initial_records={}
+local initial_roots={}
+for _,r in ipairs(bindings) do initial_records[r.char]=r;initial_roots[r.char]=r.root_spec end
+local initial_falls=pawns[1].test_fall.reset_calls
+clock=clock+1;bus.journey.manual_tick()
+assert(pawns[1].test_fall.reset_calls==initial_falls,'Retired automatic reseating ran')
+local before_switch_falls={}
+local before_switch_warps={}
+for _,r in ipairs(bindings) do before_switch_falls[r.char]=r.char.test_fall.reset_calls end
+for _,r in ipairs(bindings) do before_switch_warps[r.char]=r.char.test_controller.warps end
+assert(driver_runtime.switch_preset(nil,true))
 assert(settings.preset~=first and #bindings==3,"Shared layout switch failed")
 for _,r in ipairs(bindings) do
+    assert(r==initial_records[r.char] and r.root_spec==initial_roots[r.char],"Switch recreated physical binding")
+    assert(r.char.test_controller.warps==before_switch_warps[r.char],"Layout switch warped companion physics")
     assert(r.fsm_machine.enabled,"Preset switch did not unfreeze")
-    assert(r.char.test_fall.reset_calls==2,"Preset switch must reset fall exactly once")
+    assert(r.char.test_fall.reset_calls==before_switch_falls[r.char]+1,"Preset switch must reset fall exactly once")
 end
 bus.journey.manual_tick()
-for _,r in ipairs(bindings) do assert(not r.fsm_machine.enabled,"Preset switch did not refreeze next frame") end
+for _,r in ipairs(bindings) do assert(not r.fsm_machine.enabled,"Preset switch did not freeze next frame") end
 -- Exercise the real root UI -> deferred journey selection -> driver switch path.
 do
     local original_imgui=imgui
@@ -267,7 +295,7 @@ do
         last_field,same_line=label,false
         return false,value
     end
-    imgui={}
+    imgui={is_item_hovered=function() return false end,set_tooltip=function() end}
     function imgui.tree_node(label)
         assert(label~='Passenger backup keybinds' and not label:find('Cross Hotbar Key',1,true),'Obsolete backup section remains')
         if label=='Other Settings' then return false end
@@ -306,7 +334,7 @@ do
 end
 local reset_count=pawns[1].test_fall.reset_calls
 for i=1,4 do bus.journey.manual_tick();bus.journey.manual_pose() end
-assert(pawns[1].test_fall.reset_calls==reset_count,"Routine follow/render reset fall")
+assert(pawns[1].test_fall.reset_calls==reset_count,"Routine gameplay/render must not reset fall")
 human.pos=vec(5,0,0);bus.journey.manual_tick()
 assert(#bindings==3,'Manual seats released at exactly five')
 human.pos=vec(5.001,0,0);bus.journey.manual_tick()
@@ -315,33 +343,39 @@ for _,ch in ipairs(pawns) do assert(ch.machine.enabled,'Distance release leaked 
 human.pos=position
 assert(real_pawn_command(true,state.native_drive.cart));bus.journey.manual_tick()
 -- Pawn-only stand leaves native driver control intact.
-driver_debug_bridge.native_pawns_exit()
+driver_runtime.native_pawns_exit()
 assert(#bindings==0 and state.native_drive,"Pawn-only stand stopped player driving")
+assert(bus.journey.seat_anchor(pawns[1])==nil,'Released NPC retained reported anchor')
 for _,ch in ipairs(pawns) do assert(ch.machine.enabled,"Stand leaked FSM freeze") end
 bus.journey.manual_tick();assert(#bindings==0,"Stand immediately reseated party")
-assert(real_pawn_command(true,state.native_drive.cart))
+local stood_preset=settings.preset
+assert(driver_runtime.switch_preset(nil,true))
+assert(settings.preset==stood_preset and #bindings==3,'Manual stand/reseat advanced preset')
 bus.journey.manual_tick()
 -- Native completion, rather than a speculative A-button hook, releases all.
 interacting=false;active=nil;seat.SitChara=nil
-driver_debug_bridge.native_drive_tick(0.1)
+driver_runtime.native_drive_tick(0.1)
 assert(not state.native_drive and #bindings==0 and not bus.unified_manual_active,"Native exit leaked shared companions/ownership")
 for _,ch in ipairs(pawns) do assert(ch.machine.enabled,"Native exit leaked FSM") end
-driver_debug_bridge.native_seat_close()
+driver_runtime.native_seat_close()
 -- No NPC restoration is performed.
 assert(math.abs(driver.pos.z-body.pos.z)==500,"Exiting restored NPC driver")
 assert(data.mask==8 and refs==0,"Native exit leaked flag/result lease")
 -- Every new manual trip starts from the first enabled preset.
 command("enter")
 interacting=true;active={Point={Object=io,PointNo=1}};seat.SitChara=human
-clock=clock+0.2;driver_debug_bridge.native_seat_tick()
+clock=clock+0.2;driver_runtime.native_seat_tick()
 assert(state.native_drive and settings.presets[settings.preset]._index==1,"Reentry remembered old preset")
-driver_debug_bridge.stand_hotkey()
+driver_runtime.stand_hotkey()
 assert(not state.native_drive and #bindings==0 and state.stand_stopped,"Let me stand did not stop all scripted driving")
-assert(not driver_debug_bridge.switch_preset(nil,true),"Preset cycling survived Let me stand")
-driver_debug_bridge.native_seat_close()
+assert(not driver_runtime.switch_preset(nil,true),"Preset cycling survived Let me stand")
+driver_runtime.native_seat_close()
 assert(not bus.owner and not bus.unified_manual_active,"Final release leaked manual owner")
 function gm:isPlayerSit() return passenger_test_state end
 passenger_test_state=true
+driver.pos=body.pos -- Passenger speed tests require an available NPC driver.
+seat.SitChara=driver
+function seat:call(method) assert(method=='isSit()');return true end
 assert(bus.journey.passenger_active(),'Passenger speed service did not recognize passenger interaction')
 ox.am.CurrentActionList[0].Name='Wait'
 bus.journey.manual_tick();bus.journey.speed_step(1)

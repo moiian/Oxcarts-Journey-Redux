@@ -1,4 +1,10 @@
 -- Bounded test evidence, written through REFramework's data-file API.
+-- Detailed evidence is opt-in, never collected or written during normal play.
+if rawget(_G,'OJR_EnableRuntimeDiagnostics')~=true then
+    local idle=function() end
+    return {events={},traces={},begin_pose=idle,mark_pose=idle,sample_pose=idle,
+        cancel_pose=idle,write=idle,flush=idle,close=idle}
+end
 local M={events={},traces={},serial=0,started=os.clock(),actor_counts={}}
 local session_name=os.date('%Y%m%d_%H%M%S')..'_'..math.floor(M.started*1000)
 M.path='OJR_RuntimeTest_'..session_name..'.json'

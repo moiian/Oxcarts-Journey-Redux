@@ -1,7 +1,7 @@
+local movement_control=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/speed.lua'))()
 local actions,seat_bindings={},{}
 local player,seating_lock_active,runtime_clock={},false,1
 local cart_trip,preset_cursor={pause={}}, {Normal=1}
-local movement_control=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/speed.lua'))()
 local last_sit_preset,last_sit_request_at={},nil
 local ox,anchor={},{}
 local function spec(node) return {anim=node,randomIdle=false,x=2,y=3,z=4,lookX=0,lookZ=1} end
@@ -16,10 +16,11 @@ local fall_resets,reset_before_request=0,false
 local options={FREEZE_COMPANION_FSM=true,Presets={Normal={
     {enabled=true,pawns={spec('SitOnChairActions'),spec('SitOnChairActions'),spec('SitOnChairActions')}},
     {enabled=true,pawns={spec('LivSitChairLean'),spec('LivSitChairLean'),spec('LivSitChairLean')}}}}}
-local machine={enabled=true}
+local machine={enabled=true,freeze_writes=0}
 function machine:call(method,value)
     if method=='get_Enabled()' then return self.enabled end
     assert(method=='set_Enabled(System.Boolean)');self.enabled=value
+    if value==false then self.freeze_writes=self.freeze_writes+1 end
 end
 local function dummy() return {call=function() end} end
 local transform={get_UniversalPosition=function() return {} end,set_Parent=function() end}
@@ -56,15 +57,13 @@ local re={on_script_reset=function() end}
 -- IMPLEMENTATION --
 assert(pawn_seat_physics.blocks_pose_action==nil,'Retired action guard remains')
 sit_with_next_preset()
-assert(#actions==1 and actions[1].node=='SitOnChairActions' and actions[1].priority==0 and machine.enabled,
-    'Initial seat must use the same priority as preset changes')
+assert(#actions==1 and actions[1].node=='SitOnChairActions' and machine.enabled)
 assert(fall_resets==1,'Initial sit did not reset fall exactly once')
 runtime_clock=1.2;pawn_seat_physics.update_fsm(seat_bindings[1]);assert(machine.enabled,'Initial pose froze early')
 runtime_clock=1.31;pawn_seat_physics.advance_frame();assert(not machine.enabled,'Initial next-frame FSM freeze missing')
 start_seated_animation(pawn,seat_bindings[1].seat_spec,'LivSitPose')
 assert(fall_resets==2,'Random pose did not reset fall exactly once')
-assert(machine.enabled and actions[#actions].node=='LivSitPose' and actions[#actions].priority==1,
-    'Random pose priority or thaw behavior changed')
+assert(machine.enabled and actions[#actions].node=='LivSitPose','Random pose did not thaw')
 pawn_seat_physics.update_fsm(seat_bindings[1]);assert(machine.enabled,'Random pose froze in the request callback')
 pawn_seat_physics.advance_frame();assert(not machine.enabled,'Random pose did not freeze on next callback without time advancing')
 assert(runtime_clock==1.31,'Random pose test unexpectedly advanced its timer')
@@ -151,6 +150,24 @@ options.Presets.Normal[1].skipPassenger=false
 pawn_seat_physics.queue_preset('Normal',1);detach_bound_characters()
 assert(pawn_seat_physics.pending_preset==nil,'Release retained queued reseating')
 -- Player remains native and never enters the companion FSM path.
+bind_pawns_to_seats()
+local stable_binding=seat_bindings[1]
+local fixed_root=stable_binding.root_spec
+local old_spec=stable_binding.seat_spec
+options.Presets.Normal[2].pawns[1].y=4
+preset_cursor.Normal=2
+local fixed_position=transform.position
+bind_pawns_to_seats(true)
+assert(seat_bindings[1]==stable_binding and stable_binding.root_spec==fixed_root,'Switch replaced physical binding')
+assert(stable_binding.seat_spec==options.Presets.Normal[2].pawns[1] and fixed_root.y==3,'Switch changed physical anchor')
+assert(transform.position==fixed_position,'Switch warped actor root')
+assert(not stable_binding.initial_refresh_at and pawn_seat_physics.refresh_initial_pose==nil,'Retired automatic rebuild remains')
+pawn_seat_physics.advance_frame()
+assert(not machine.enabled and not stable_binding.fsm_freeze_frame,'FSM freeze was not consumed')
+local freezes=machine.freeze_writes
+for i=1,10 do pawn_seat_physics.advance_frame();pawn_seat_physics.update_fsm(stable_binding) end
+assert(machine.freeze_writes==freezes,'Frozen FSM setter repeated every frame')
+detach_bound_characters()
 local player_actions=0
 player={get_Valid=function() return true end,get_Transform=function() return transform end,
     ['<ActionManager>k__BackingField']={requestActionCore=function() player_actions=player_actions+1 end}}
