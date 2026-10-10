@@ -1,6 +1,7 @@
 local calls, errors = {}, {}
 local options={FREEZE_COMPANION_FSM=true}
 local function vec(x,y,z) return {x=x,y=y,z=z} end
+Vector3f={new=vec}
 local function recorder(name)
     return {call=function(_,method,value) calls[#calls+1]={name,method,value} end}
 end
@@ -45,6 +46,11 @@ local roster={[pawn]=true}
 local function collect_party_pawns() return {pawn},roster end
 local function collect_companions() return {pawn},roster,{} end
 local function companion_interacting() return false end
+local function player_uses_cart_seat_node() return true end
+local function find_active_ox() return {} end
+local function find_cart_body() return seat_anchor_transform end
+local function resolve_seat_anchor(body) return body end
+local function player_is_physically_seated() return true end
 
 -- IMPLEMENTATION --
 pawn_seat_physics.step_pose_wait=function() end
@@ -86,4 +92,22 @@ pawn_seat_physics.remove(1)
 assert(#seat_bindings==1 and extra:get_Transform().parent==nil,'Single removal left pawn attached')
 pawn_seat_physics.finish(extra)
 assert(#seat_bindings==1,'Repeated release changed remaining player binding')
+local native=vec(-3,4,8)
+pawn_seat_physics.restore_player_display()
+player:get_Transform().position=native
+calls={};enforce_seat_transforms(nil,true)
+assert(player:get_Transform().position.x==12,'Player preset missing')
+pawn_seat_physics.sync_player_adjustment({teleportPlayer=false,player=spec})
+assert(#seat_bindings==0 and player:get_Transform().position.x==native.x,'OFF did not immediately restore native player position')
+local untouched=vec(40,50,60)
+player:get_Transform().position=untouched
+enforce_seat_transforms(nil,true)
+assert(player:get_Transform().position==untouched and #calls==0,'OFF still writes player position or physics')
+seating_lock_active=false -- No companions: the empty binding list has been cleaned up.
+pawn_seat_physics.sync_player_adjustment({teleportPlayer=true,player=spec})
+assert(#seat_bindings==1 and seat_bindings[1].next_idle_time==nil,'ON issued a player idle schedule')
+enforce_seat_transforms(nil,true)
+assert(player:get_Transform().position.x==12,'ON did not resume saved coordinates')
+pawn_seat_physics.restore_player_display()
+assert(player:get_Transform().position.x==40,'Latest native position was not retained')
 print('PASS: pawn sync/fall/photo, failed-sync release, full roster pruning and body-only anchor')

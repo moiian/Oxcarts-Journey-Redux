@@ -1,6 +1,7 @@
 local actions,seat_bindings={},{}
 local player,seating_lock_active,runtime_clock={},false,1
 local cart_trip,preset_cursor={pause={}}, {Normal=1}
+local movement_control=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/speed.lua'))()
 local last_sit_preset,last_sit_request_at={},nil
 local ox,anchor={},{}
 local function spec(node) return {anim=node,randomIdle=false,x=2,y=3,z=4,lookX=0,lookZ=1} end
@@ -55,13 +56,15 @@ local re={on_script_reset=function() end}
 -- IMPLEMENTATION --
 assert(pawn_seat_physics.blocks_pose_action==nil,'Retired action guard remains')
 sit_with_next_preset()
-assert(#actions==1 and actions[1].node=='SitOnChairActions' and machine.enabled)
+assert(#actions==1 and actions[1].node=='SitOnChairActions' and actions[1].priority==0 and machine.enabled,
+    'Initial seat must use the same priority as preset changes')
 assert(fall_resets==1,'Initial sit did not reset fall exactly once')
 runtime_clock=1.2;pawn_seat_physics.update_fsm(seat_bindings[1]);assert(machine.enabled,'Initial pose froze early')
 runtime_clock=1.31;pawn_seat_physics.advance_frame();assert(not machine.enabled,'Initial next-frame FSM freeze missing')
 start_seated_animation(pawn,seat_bindings[1].seat_spec,'LivSitPose')
 assert(fall_resets==2,'Random pose did not reset fall exactly once')
-assert(machine.enabled and actions[#actions].node=='LivSitPose','Random pose did not thaw')
+assert(machine.enabled and actions[#actions].node=='LivSitPose' and actions[#actions].priority==1,
+    'Random pose priority or thaw behavior changed')
 pawn_seat_physics.update_fsm(seat_bindings[1]);assert(machine.enabled,'Random pose froze in the request callback')
 pawn_seat_physics.advance_frame();assert(not machine.enabled,'Random pose did not freeze on next callback without time advancing')
 assert(runtime_clock==1.31,'Random pose test unexpectedly advanced its timer')
@@ -125,6 +128,28 @@ local function invoke(node)
 end
 assert(invoke('Run')==nil,'Retired competing-action hook still blocks requests')
 assert(invoke('Caught')==nil and #seat_bindings==0 and machine.enabled,'Caught did not restore FSM before release')
+options.Presets.Normal[1].pawns[1].useDirectMotion=false
+options.Presets.Normal[2].pawns[1].useDirectMotion=false
+bind_pawns_to_seats();pawn_seat_physics.advance_frame()
+assert(not machine.enabled)
+local action_count,fall_count=#actions,fall_resets
+pawn_seat_physics.queue_preset('Normal',2)
+assert(#actions==action_count and not machine.enabled,'UI queue mutated FSM or animation')
+paused=true;pawn_seat_physics.apply_pending_preset()
+assert(pawn_seat_physics.pending_preset and #actions==action_count,'Paused menu applied an animation')
+paused=false;pawn_seat_physics.advance_frame();pawn_seat_physics.apply_pending_preset()
+assert(machine.enabled and #actions==action_count+1 and fall_resets==fall_count+1,'Queued switch skipped full pose/fall/FSM flow')
+assert(actions[#actions].node=='LivSitChairLean')
+pawn_seat_physics.advance_frame();assert(not machine.enabled,'Queued switch failed to freeze on following behavior')
+options.Presets.Normal[1].skipPassenger=true
+runtime_clock=runtime_clock+1;sit_with_next_preset()
+assert(preset_cursor.Normal==2,'Passenger cycle did not skip marked preset')
+options.Presets.Normal[2].skipPassenger=true
+action_count=#actions;runtime_clock=runtime_clock+1;sit_with_next_preset()
+assert(#actions==action_count,'All-skipped passenger cycle requested a pose')
+options.Presets.Normal[1].skipPassenger=false
+pawn_seat_physics.queue_preset('Normal',1);detach_bound_characters()
+assert(pawn_seat_physics.pending_preset==nil,'Release retained queued reseating')
 -- Player remains native and never enters the companion FSM path.
 local player_actions=0
 player={get_Valid=function() return true end,get_Transform=function() return transform end,

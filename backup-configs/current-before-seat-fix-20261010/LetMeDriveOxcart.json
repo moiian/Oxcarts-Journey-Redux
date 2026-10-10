@@ -1,0 +1,1170 @@
+{
+    "bindings": {
+        "down": {
+            "gamepad": "LTrigTop",
+            "keyboard": "S"
+        },
+        "near_take": {
+            "gamepad": "Cancel",
+            "keyboard": "F"
+        },
+        "pawn_stand": {
+            "gamepad": "Cancel",
+            "keyboard": "F"
+        },
+        "sit": {
+            "gamepad": "RLeft",
+            "keyboard": "E"
+        },
+        "stand": {
+            "gamepad": "Decide",
+            "keyboard": "X"
+        },
+        "up": {
+            "gamepad": "RTrigTop",
+            "keyboard": "W"
+        }
+    },
+    "builtin_presets_rule": 1,
+    "cart_family_rule": 1,
+    "debug_player_freeze": false,
+    "debug_player_pose_lock": true,
+    "debug_player_position_sync": true,
+    "debug_player_reset_fall": true,
+    "entry_hold_binding_rule": 1,
+    "family_cursor": {
+        "Normal": 11,
+        "Rainy": 10,
+        "Wealthy": 8
+    },
+    "freeze_companion_fsm": true,
+    "native_pose_rule": 1,
+    "player_pose_lock_rule": 1,
+    "player_seat_rule": 1,
+    "preset": 11,
+    "presets": [
+        {
+            "builtin_id": "Normal:1",
+            "camera": {
+                "distance": 3.9820001125335693,
+                "distance_enabled": true,
+                "fov": 60.84600067138672,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Normal",
+            "name": "Normal - Default 1",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "randomIdle": false,
+                    "useOxAnchor": false,
+                    "x": -0.050999999046325684,
+                    "y": 0.9200000166893005,
+                    "yaw": 178,
+                    "z": 0.33399999141693115
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90.0,
+                    "z": -2.5999999046325684
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90.0,
+                    "z": -3.35
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -3.3299999237060547
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Rainy:1",
+            "camera": {
+                "distance": 4.803999900817871,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "default_family": "Rainy",
+            "enabled": true,
+            "family": "Rainy",
+            "name": "Rainproof - Default 1",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": -0.051,
+                    "y": 0.92,
+                    "yaw": 178,
+                    "z": 0.334
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -3.35
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -3.35
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Wealthy:1",
+            "camera": {
+                "distance": 5.704999923706055,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "default_family": "Wealthy",
+            "enabled": true,
+            "family": "Wealthy",
+            "name": "Luxury - Default 1",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": 0.0,
+                    "y": 0.92,
+                    "yaw": 180,
+                    "z": 0.274
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.45,
+                    "y": 0.23,
+                    "yaw": 180,
+                    "z": -3.15
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.5,
+                    "y": 0.23,
+                    "yaw": 0,
+                    "z": -1.2
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.5,
+                    "y": 0.23,
+                    "yaw": 0,
+                    "z": -1.25
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -3.5000000000000004
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -4.300000000000001
+                }
+            ]
+        },
+        {
+            "builtin_id": "Normal:2",
+            "camera": {
+                "distance": 3.9820001125335693,
+                "distance_enabled": true,
+                "fov": 60.84600067138672,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Normal",
+            "name": "Normal - Default 2",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "randomIdle": false,
+                    "useOxAnchor": false,
+                    "x": -0.25099998712539673,
+                    "y": 0.9200000166893005,
+                    "yaw": 178,
+                    "z": 0.33399999141693115
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 0.3100000023841858,
+                    "y": 0.9200000166893005,
+                    "yaw": 180,
+                    "z": 0.30000001192092896
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.8999999761581421,
+                    "y": 0.23,
+                    "yaw": -97.0,
+                    "z": -4.179999828338623
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 0.8799999952316284,
+                    "y": 0.3100000023841858,
+                    "yaw": 90.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -3.299999952316284
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Normal:3",
+            "camera": {
+                "distance": 3.9820001125335693,
+                "distance_enabled": true,
+                "fov": 60.84600067138672,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Normal",
+            "name": "Normal - Default 3",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "randomIdle": false,
+                    "useOxAnchor": false,
+                    "x": -0.050999999046325684,
+                    "y": 0.9200000166893005,
+                    "yaw": 178,
+                    "z": 0.33399999141693115
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": false,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 1.440000057220459,
+                    "y": 0.7900000214576721,
+                    "yaw": 90.0,
+                    "z": -1.3200000524520874
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -1.3300000429153442,
+                    "y": 0.7900000214576721,
+                    "yaw": -90.0,
+                    "z": -3.35
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -4.179999828338623
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Normal:4",
+            "camera": {
+                "distance": 3.9820001125335693,
+                "distance_enabled": true,
+                "fov": 60.84600067138672,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Normal",
+            "name": "Normal - Default 4",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "randomIdle": false,
+                    "useOxAnchor": false,
+                    "x": -0.050999999046325684,
+                    "y": 0.9200000166893005,
+                    "yaw": 178,
+                    "z": 0.33399999141693115
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": false,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 1.149999976158142,
+                    "y": 0.7900000214576721,
+                    "yaw": -96.0,
+                    "z": -1.3200000524520874
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 0.7799999713897705,
+                    "y": 0.28999999165534973,
+                    "yaw": 90.0,
+                    "z": -3.4000000953674316
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.8399999737739563,
+                    "y": 0.25999999046325684,
+                    "yaw": -90.0,
+                    "z": -3.6700000762939453
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Wealthy:2",
+            "camera": {
+                "distance": 5.704999923706055,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Wealthy",
+            "name": "Luxury - Default 2",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": -0.3100000023841858,
+                    "y": 0.92,
+                    "yaw": 180,
+                    "z": 0.274
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.28999999165534973,
+                    "y": 0.8600000143051147,
+                    "yaw": 180,
+                    "z": 0.2800000011920929
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.5,
+                    "y": 0.23,
+                    "yaw": 0,
+                    "z": -1.2
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.5,
+                    "y": 0.23,
+                    "yaw": 0,
+                    "z": -1.25
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Wealthy:3",
+            "camera": {
+                "distance": 5.704999923706055,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Wealthy",
+            "name": "Luxury - Default 3",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": -0.3100000023841858,
+                    "y": 0.92,
+                    "yaw": 180,
+                    "z": 0.274
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.28999999165534973,
+                    "y": 0.8600000143051147,
+                    "yaw": 180,
+                    "z": 0.2800000011920929
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "randomIdle": true,
+                    "x": -0.5,
+                    "y": 0.33000001311302185,
+                    "yaw": 0,
+                    "z": -4.510000228881836
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 1.2899999618530273,
+                    "y": 0.75,
+                    "yaw": -98.0,
+                    "z": -1.090000033378601
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Wealthy:4",
+            "camera": {
+                "distance": 5.704999923706055,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Wealthy",
+            "name": "Luxury - Default 4",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": -0.3100000023841858,
+                    "y": 0.92,
+                    "yaw": 180,
+                    "z": 0.274
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "randomIdle": false,
+                    "x": 0.28999999165534973,
+                    "y": 3.0399999618530273,
+                    "yaw": 180,
+                    "z": 0.05000000074505806
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "randomIdle": false,
+                    "x": 0.49000000953674316,
+                    "y": 0.5299999713897705,
+                    "yaw": 0,
+                    "z": -4.510000228881836
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.5,
+                    "y": 0.23,
+                    "yaw": 0,
+                    "z": -1.25
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "builtin_id": "Rainy:2",
+            "camera": {
+                "distance": 4.803999900817871,
+                "distance_enabled": true,
+                "fov": 75.33699798583984,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Rainy",
+            "name": "Rainproof - Default 2",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": false,
+                    "x": -0.3310000002384186,
+                    "y": 0.92,
+                    "yaw": 178,
+                    "z": 0.334
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.3199999928474426,
+                    "y": 0.9300000071525574,
+                    "yaw": 171.0,
+                    "z": 0.2800000011920929
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.8999999761581421,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -4.269999980926514
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 1.0199999809265137,
+                    "y": 0.23,
+                    "yaw": 88.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90,
+                    "z": -2.7
+                }
+            ]
+        },
+        {
+            "camera": {
+                "distance": 3.9820001125335693,
+                "distance_enabled": true,
+                "fov": 60.84600067138672,
+                "fov_enabled": true
+            },
+            "enabled": true,
+            "family": "Normal",
+            "name": "Normal - 1",
+            "pawns_customized": true,
+            "slots": [
+                {
+                    "randomIdle": false,
+                    "useOxAnchor": false,
+                    "x": -0.39100000262260437,
+                    "y": 0.9200000166893005,
+                    "yaw": 178,
+                    "z": 0.33399999141693115
+                },
+                {
+                    "anim": "LivSitChairCrosslegs",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": false,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 1.149999976158142,
+                    "y": 0.7900000214576721,
+                    "yaw": -96.0,
+                    "z": -1.3200000524520874
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": 0.7799999713897705,
+                    "y": 0.28999999165534973,
+                    "yaw": 90.0,
+                    "z": -3.4000000953674316
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "bankID": 0,
+                    "freezeFsm": true,
+                    "motionID": 0,
+                    "randomIdle": true,
+                    "useDirectMotion": false,
+                    "useOxAnchor": false,
+                    "x": -0.85,
+                    "y": 0.23,
+                    "yaw": -90.0,
+                    "z": -2.5
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.28999999165534973,
+                    "y": 0.8899999856948853,
+                    "yaw": -180,
+                    "z": 0.36000001430511475
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.1
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -1.9000000000000001
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0.85,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                },
+                {
+                    "anim": "SitOnChairActions",
+                    "randomIdle": true,
+                    "x": 0,
+                    "y": 0.23,
+                    "yaw": 90,
+                    "z": -2.7
+                }
+            ]
+        }
+    ],
+    "sensitivity": 70.43399810791016,
+    "shoulder_binding_rule": 1
+}

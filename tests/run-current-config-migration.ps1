@@ -16,8 +16,8 @@ function ConvertTo-Lua($value) {
 }
 $ojr=Get-Content -Raw -LiteralPath (Join-Path $ConfigDirectory 'OxcartsJourneyRedux.json') | ConvertFrom-Json -AsHashtable
 $lmd=Get-Content -Raw -LiteralPath (Join-Path $ConfigDirectory 'LetMeDriveOxcart.json') | ConvertFrom-Json -AsHashtable
-if ($ojr.UnifiedVersion -eq 1) { throw 'This test expects pre-merge configurations' }
 $prefix='OJR_TEST_CONFIG='+(ConvertTo-Lua $ojr)+"`nLMD_TEST_CONFIG="+(ConvertTo-Lua $lmd)+"`n"
+$prefix+='local original_unified='+(ConvertTo-Lua ($ojr.UnifiedVersion -ge 1))+"`n"
 $prefix+='local expected_counts={};for k,v in pairs(OJR_TEST_CONFIG.Presets) do expected_counts[k]=#v end' + "`n"
 $prefix+='local original_presets='+(ConvertTo-Lua $ojr.Presets)+"`n"
 $project=Split-Path -Parent $PSScriptRoot

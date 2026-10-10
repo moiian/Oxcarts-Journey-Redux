@@ -40,10 +40,10 @@ $presetStart = $source.IndexOf('local function get_default_normal_presets(')
 $presetEnd = $source.IndexOf('local fixed_cart_parameters =', $presetStart)
 $saveStart = $source.IndexOf('local function persist_options(')
 $saveEnd = $source.IndexOf('local function restore_default_key_bindings(', $saveStart)
-$copyStart = $source.IndexOf('                            local src = options.Presets[cat][1]')
-$copyEnd = $source.IndexOf('                            persist_options()', $copyStart)
+$copyStart = $source.IndexOf('                                local src = preset')
+$copyEnd = $source.IndexOf('                                persist_options()', $copyStart)
 $editorStart = $source.IndexOf('local function draw_seat_editor(')
-$editorEnd = $source.IndexOf('re.on_draw_ui(', $editorStart)
+$editorEnd = $source.IndexOf('function pawn_seat_physics.draw_backup_keybinds()', $editorStart)
 if (@($presetStart,$presetEnd,$saveStart,$saveEnd,$copyStart,$copyEnd,$editorStart,$editorEnd) -contains -1) { throw 'Preset compatibility test boundaries not found' }
 $compatibilityFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'preset-compatibility.lua') -Raw
 $compatibilityFixture.Replace('-- PRESET IMPLEMENTATION --',$source.Substring($presetStart,$presetEnd-$presetStart)).Replace('-- SAVE IMPLEMENTATION --',$source.Substring($saveStart,$saveEnd-$saveStart)).Replace('-- ADD PRESET IMPLEMENTATION --',$source.Substring($copyStart,$copyEnd-$copyStart)).Replace('-- EDITOR IMPLEMENTATION --',$source.Substring($editorStart,$editorEnd-$editorStart)) | python -X utf8 $LuaChecker --execute
@@ -57,7 +57,7 @@ $intermediateEnd = $source.IndexOf('local function check_intermediate_arrival(',
 $companionFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'companion-seats.lua') -Raw
 $companionFixture.Replace('-- COLLECTOR --',$source.Substring($collectorStart,$collectorEnd-$collectorStart)).Replace('-- IMPLEMENTATION --',$switchImplementation).Replace('-- RELEASE VARIANTS --',$source.Substring($releaseVariantStart,$releaseVariantEnd-$releaseVariantStart)).Replace('-- INTERMEDIATE RELEASE --',$source.Substring($intermediateStart,$intermediateEnd-$intermediateStart)) | python -X utf8 $LuaChecker --execute
 if ($LASTEXITCODE -ne 0) { throw 'OJR companion seats tests failed' }
-$uiStart = $source.IndexOf('re.on_draw_ui(function()')
+$uiStart = $source.IndexOf('function pawn_seat_physics.draw_backup_keybinds()')
 $uiEnd = $source.IndexOf('sdk.hook(', $uiStart)
 $uiFixture = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'menu-layout.lua') -Raw
 $uiFixture.Replace('-- UI IMPLEMENTATION --',$source.Substring($uiStart,$uiEnd-$uiStart)) | python -X utf8 $LuaChecker --execute

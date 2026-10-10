@@ -12,6 +12,18 @@ re.on_script_reset=function(fn)
 end
 local errors={}
 log.error=function(err) errors[#errors+1]=tostring(err) end
+local hook_lists={}
+sdk.hook=function(method,pre)
+    hook_lists[method]=hook_lists[method] or {}
+    if pre then table.insert(hook_lists[method],pre) end
+    hooks[method]=function(args)
+        local skip
+        for _,fn in ipairs(hook_lists[method]) do
+            if fn(args)==sdk.PreHookResult.SKIP_ORIGINAL then skip=sdk.PreHookResult.SKIP_ORIGINAL end
+        end
+        return skip
+    end
+end
 local old_object=object
 object=function(...)
     local ch=old_object(...)
@@ -42,4 +54,7 @@ end
 thread={get_hook_storage=function() return {} end}
 _G.OJR_UnifiedPresets=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/presets.lua'))()
 _G.OJR_UnifiedSpeed=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/speed.lua'))()
+_G.OJR_PassengerHud=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/hud.lua'))()
+_G.OJR_CartProtection=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/protection.lua'))()
+_G.OJR_RuntimeDiagnostics=assert(loadfile('reframework/autorun/Oxcarts Journey Redux/diagnostics.lua'))()
 assert(loadfile('reframework/autorun/Oxcarts Journey Redux/journey.lua'))()

@@ -388,7 +388,9 @@ local function action(actor, name, requested_priority)
     assert(am, "ActionManager unavailable")
     state.issuing = true
     local priority = requested_priority or (name == "SitOnChairActions" and 1 or 0)
-    local ok, err = pcall(function() am:call("requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)", priority, name, 0) end)
+    local ok, err = pcall(function() speed_control.issue(function()
+        am:call("requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)", priority, name, 0)
+    end) end)
     state.issuing = false
     if not ok then error(err) end
 end
@@ -828,6 +830,9 @@ driver_debug_bridge = _G.LMD_DriverDebug
     end
     driver_debug_bridge.native_seat_read=function() return view end
     driver_debug_bridge.native_seat_busy=function() return owned~=nil or pending~=nil or npc_observation~=nil or entry_wait~=nil end
+    driver_debug_bridge.native_player_is_driver=function()
+        return owned~=nil and owned.bound==true and address(owned.seat.SitChara)==address(owned.ch)
+    end
     driver_debug_bridge.native_preset_pause=function(delta)
         if owned and owned.visual_ready_at and os.clock()-delta<owned.visual_ready_at then
             owned.visual_ready_at=owned.visual_ready_at+delta
@@ -2015,7 +2020,8 @@ end
             transform:set_Position(target)
         end
         local q=state.native_drive
-        if q and native_camera_ready() then update(q.ch,q.cart,1) end
+        local preset=settings.presets[settings.preset]
+        if q and native_camera_ready() and preset and preset._canonical.teleportPlayer then update(q.ch,q.cart,1) end
         -- Companions have their own real-position/physics synchronization.
     end
     driver_debug_bridge.native_pose_node=function(ch)
@@ -2232,6 +2238,7 @@ local last = os.clock()
     end
     driver_debug_bridge.native_drive_end=function(q)
         if state.native_drive~=q then return end
+        speed_control.clear()
         state.native_drive=nil;q.drive=nil
         bus.journey.end_manual()
         state.seats={}
@@ -2290,7 +2297,12 @@ local last = os.clock()
         cart.cow:call("set_TargetFrontAngleDeg(System.Single)",d.heading)
         cart.cow:call("set_TargetMoveAngleDeg(System.Single)",d.heading)
         local current=cart.ox["<ActionManager>k__BackingField"].CurrentActionList[0]
-        if not current or current.Name~=modes[d.level] then action(cart.ox,modes[d.level]) end
+        if speed_control.can_command(cart.ox) then
+            speed_control.hold(cart.ox,modes[d.level],0.5,os.clock())
+            if current.Name~=modes[d.level] then action(cart.ox,modes[d.level]) end
+        else
+            speed_control.clear()
+        end
         state.message="Native driving: "..modes[d.level]
     end
 end)()
@@ -2706,46 +2718,17 @@ hook("app.ActionManager", "requestActionCore(app.ActionManager.Priority, System.
             local node=sdk.to_managed_object(args[4]):ToString()
             if node=="Walk" or node=="Run" or node=="Dash" then return sdk.PreHookResult.SKIP_ORIGINAL end
         end
+        local q=state.native_drive
+        if q and address(request_am:get_GameObject())==address(q.cart.ox:get_GameObject()) then
+            local node=sdk.to_managed_object(args[4]):ToString()
+            if speed_control.blocks(q.cart.ox,node,0,os.clock(),paused()) then return sdk.PreHookResult.SKIP_ORIGINAL end
+        end
     end
 end)
--- Receiver identity, not character-name prefixes, defines this mod's scope.
--- Driver/guard NPCs and unrelated carts deliberately have no protection rule.
-;(function()
-    local function protection_for(info,include_cart)
-        local receiver=info and info["<DamageGameObject>k__BackingField"]
-        if not valid(receiver) then return end
-        local target=address(receiver)
-        if not target then return end
-        for _,record in ipairs(bus.journey.records()) do
-            local ch=record.char
-            if valid(ch) and target==address(ch:get_GameObject())
-                and attempt(function() return driver_debug_bridge.native_pawn_context(ch) end) then
-                return "anchored_pawn"
-            end
-        end
-        local drive=include_cart and state.native_drive
-        if not drive then return end
-        for _,part in ipairs({drive.cart.body,drive.cart.ox,drive.cart.cow}) do
-            if valid(part) and target==address(part:get_GameObject()) then return "driven_cart" end
-        end
-    end
-    hook("app.HitController", "damageProc(app.HitController.DamageInfo)",function(args)
-        if protection_for(sdk.to_managed_object(args[3]),false)=="anchored_pawn" then
-            return sdk.PreHookResult.SKIP_ORIGINAL
-        end
-    end)
-    hook("app.HitController", "updateDamage(app.HitController.DamageInfo, System.UInt32, System.Single, System.Boolean)",function(args)
-        local info=sdk.to_managed_object(args[3])
-        attempt(function() driver_debug_bridge.road_damage(info) end)
-        local rule=protection_for(info,true)
-        if rule=="anchored_pawn" then
-            info.Damage=0;return sdk.PreHookResult.SKIP_ORIGINAL
-        elseif rule=="driven_cart" and info.Damage>0 then
-            -- Run the native transaction even when positive HP damage is zero.
-            info.Damage=0
-        end
-    end)
-end)()
+-- Road diagnostics observe damage; journey owns immunity in both modes.
+hook("app.HitController", "updateDamage(app.HitController.DamageInfo, System.UInt32, System.Single, System.Boolean)",function(args)
+    attempt(function() driver_debug_bridge.road_damage(sdk.to_managed_object(args[3])) end)
+end)
 re.on_script_reset(function()
     state.entry_hold=nil
     attempt(driver_debug_bridge.seat_motion_close)
@@ -2842,12 +2825,12 @@ local function draw_driver_ui()
             state.binding_capture, state.rebind_block = nil, true
             previous, input = {}, { keyboard = 0, stick = 0 }; save()
         end
+        if bus.journey.draw_backup_keybinds then bus.journey.draw_backup_keybinds() end
         imgui.tree_pop()
     end
 end
 
 local function draw_driver_player(preset)
-    if not imgui.tree_node("Player driver parameters") then return end
     local slot,camera=unified_presets.driver_for(preset)
     for _,key in ipairs({"x","y","z","yaw"}) do
         local changed,value=imgui.drag_float(key.."##driver",slot[key],key=="yaw" and 1 or 0.01,
@@ -2862,23 +2845,26 @@ local function draw_driver_player(preset)
     if c then camera.distance_enabled=v;if not v then restore_camera_distance() end;save() end
     c,v=imgui.slider_float("Driver camera distance",camera.distance,0,10)
     if c then camera.distance=v;save() end
-    imgui.tree_pop()
 end
 bus.driver={
     draw_ui=draw_driver_ui,
     draw_player=draw_driver_player,
+    player_adjustment_changed=function(preset)
+        local active=settings.presets[settings.preset]
+        if active and active._canonical==preset then driver_debug_bridge.native_visual_clear() end
+    end,
     get_bindings=function() return settings.bindings end,
     is_busy=function() return driver_debug_bridge.native_seat_busy() end,
+    player_is_driver=function() return driver_debug_bridge.native_player_is_driver() end,
     abort=function() return driver_debug_bridge.native_seat_close() end,
     capturing=function() return state.binding_capture~=nil or state.rebind_block==true end,
     layout_selected=function(family,index)
         local q=state.native_drive
-        if not q or state.stand_stopped or family~=state.family then return end
-        driver_debug_bridge.native_visual_clear()
+        if not q or state.stand_stopped or family~=state.family then return false end
         unified_presets.refresh()
         for i,p in ipairs(settings.presets) do
-            if p.family==family and p._index==index then settings.preset=i;break end
+            if p.family==family and p._index==index then return driver_debug_bridge.switch_preset(i,false) end
         end
-        unified_presets.activate(settings.preset)
+        return false
     end,
 }

@@ -13,86 +13,113 @@ end
 local function driver_slot()
     return {x=-0.071,y=0.920,z=0.274,yaw=178,randomIdle=false}
 end
-function M.init(options, cursor, persist, normalize)
+function M.init(options, cursor, persist, normalize, passenger_builtins)
     M.options,M.cursor,M.persist,M.normalize=options,cursor,persist,normalize
+    M.passenger_builtins=passenger_builtins or {}
     return M
+end
+local function plain_name(name) return (name or "Unnamed Preset"):gsub("^%[%d+%]%s*","") end
+function M.reindex()
+    if not M.options then return end
+    for _,family in ipairs(families) do
+        for i,p in ipairs(M.options.Presets[family]) do
+            local name=plain_name(p.name)
+            p.name="["..i.."] "..name
+            p.enabled=true
+            p.skipPassenger=p.skipPassenger==true
+        end
+    end
 end
 function M.attach(settings,builtins)
     local options = assert(M.options,"Journey presets must load first")
-    if options.UnifiedVersion ~= 1 then
-        -- Preserve every existing OJR layout. Import LMD layouts as additional
-        -- variants rather than guessing which conflicting companion layout wins.
-        for _,family in ipairs(families) do
-            local fallback
-            for _,p in ipairs(settings.presets) do if p.family==family then fallback=p;break end end
-            for _,p in ipairs(options.Presets[family]) do
-                p.driver=copy(fallback and fallback.slots[1] or driver_slot())
-                p.driver_camera=copy(fallback and fallback.camera or camera())
+    local upgrading=(tonumber(options.UnifiedVersion) or 0)<2
+    M.factories={}
+    M.removed_imports=0
+    for _,family in ipairs(families) do
+        local legacy_driver,default_driver
+        for _,p in ipairs(settings.presets) do if p.family==family then legacy_driver=p;break end end
+        for _,p in ipairs(builtins or {}) do if p.family==family then default_driver=p;break end end
+        M.factories[family]={}
+        for i,source in ipairs(M.passenger_builtins[family] or {}) do
+            local p=copy(source)
+            p.builtin_id="passenger:"..family..":"..i
+            p.driver=p.driver or copy(default_driver and default_driver.slots[1] or driver_slot())
+            p.driver_camera=p.driver_camera or copy(default_driver and default_driver.camera or camera())
+            p.skipPassenger=p.skipPassenger==true
+            M.factories[family][i]=p
+        end
+        local list=options.Presets[family]
+        for i=#list,1,-1 do
+            local p=list[i]
+            if p.driver_builtin_id~=nil or (p.name or ""):find("(driver import",1,true) then
+                table.remove(list,i);M.removed_imports=M.removed_imports+1
             end
         end
-        for _,old in ipairs(settings.presets) do
-            local list=options.Presets[old.family]
-            local p=copy(list[1])
-            p.name=old.name .. " (driver import)"
-            p.enabled=old.enabled~=false
-            p.driver,p.driver_camera=copy(old.slots[1]),copy(old.camera)
-            p.driver_builtin_id=old.builtin_id
-            for i=1,9 do
-                local slot=copy(old.slots[i+1])
-                if slot then
-                    local a=math.rad(slot.yaw or 0)
-                    slot.lookX,slot.lookZ=math.sin(a),math.cos(a)
-                    slot.yaw,slot.freezeFsm,slot.useOxAnchor=nil,nil,nil
-                    p.pawns[i]=slot
+        if #list==0 then
+            for _,source in ipairs(M.factories[family]) do list[#list+1]=copy(source) end
+        end
+        for _,p in ipairs(options.Presets[family]) do
+            p.enabled=true
+            p.driver=p.driver or copy(legacy_driver and legacy_driver.slots[1] or driver_slot())
+            p.driver_camera=p.driver_camera or copy(legacy_driver and legacy_driver.camera or camera())
+            for _,source in ipairs(M.factories[family]) do
+                if p.builtin_id==source.builtin_id or (upgrading and plain_name(p.name)==plain_name(source.name)) then
+                    p.builtin_id=source.builtin_id;break
                 end
             end
-            list[#list+1]=p
         end
-        options.ManualSettings={}
-        options.UnifiedVersion=1
+        M.cursor[family]=math.max(1,math.min(M.cursor[family] or 1,#list))
     end
-    for _,family in ipairs(families) do
-        for _,p in ipairs(options.Presets[family]) do
-            p.driver=p.driver or driver_slot()
-            p.driver_camera=p.driver_camera or camera()
-        end
-    end
+    options.UnifiedVersion=2
+    M.normalize({Presets=M.factories})
+    M.normalize()
     if type(options.ManualSettings) == "table" then
         for k,v in pairs(options.ManualSettings) do settings[k]=copy(v) end
     end
     settings.freeze_companion_fsm=true
     M.settings=settings
-    M.builtins=builtins or {}
     M.refresh()
     M.save_driver()
 end
 function M.restore_builtins()
     local changed=false
     for _,family in ipairs(families) do
-        for _,p in ipairs(M.options.Presets[family]) do
-            for _,source in ipairs(M.builtins or {}) do
-                if p.driver_builtin_id==source.builtin_id then
-                    p.driver,p.driver_camera=copy(source.slots[1]),copy(source.camera)
-                    for i,slot in ipairs(source.slots) do
-                        if i>1 then
-                            local s=copy(slot)
-                            local a=math.rad(s.yaw or 0)
-                            s.lookX,s.lookZ=math.sin(a),math.cos(a)
-                            s.yaw,s.freezeFsm,s.useOxAnchor=nil,nil,nil
-                            p.pawns[i-1]=s
-                        end
-                    end
-                    changed=true
-                    break
-                end
-            end
+        local old=M.options.Presets[family]
+        local active=old[M.cursor[family] or 1]
+        local list,restored={},{}
+        for _,source in ipairs(M.factories[family]) do
+            local target
+            for _,p in ipairs(old) do if p.builtin_id==source.builtin_id then target=p;break end end
+            target=target or {}
+            for key in pairs(target) do target[key]=nil end
+            for key,value in pairs(copy(source)) do target[key]=value end
+            list[#list+1]=target;restored[target]=true;changed=true
+        end
+        for _,p in ipairs(old) do if not restored[p] then list[#list+1]=p end end
+        if #list>0 then
+            M.options.Presets[family]=list
+            M.cursor[family]=1
+            for i,p in ipairs(list) do if p==active then M.cursor[family]=i;break end end
         end
     end
-    if changed then M.normalize();M.persist();M.refresh() end
+    if changed then M.normalize();M.refresh();M.persist() end
     return changed
+end
+function M.passenger_eligible(preset)
+    return preset and preset.enabled~=false and preset.skipPassenger~=true
+end
+function M.next_passenger(family,start)
+    local list=M.options.Presets[family] or {}
+    if #list==0 then return nil end
+    for n=1,#list do
+        local i=((start or 0)+n-1)%#list+1
+        if M.passenger_eligible(list[i]) then return i end
+    end
+    return nil
 end
 function M.refresh()
     if not M.settings then return end
+    M.reindex()
     local selected=M.settings.presets and M.settings.presets[M.settings.preset]
     local family=selected and selected.family or "Normal"
     local flat={}

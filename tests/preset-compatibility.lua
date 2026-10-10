@@ -26,7 +26,7 @@ end
 local p=legacy('User layout',true)
 options.Presets={Normal={p},Rainy={legacy('Rain custom',false)}}
 normalize_presets()
-assert(options.Presets.Normal[1]==p and p.name=='User layout' and p.enabled==false and p.custom=='keep')
+assert(options.Presets.Normal[1]==p and p.name=='User layout' and p.enabled==true and p.custom=='keep')
 assert(p.player.x==1.2 and p.player.y==2.3 and p.player.z==-3.4 and p.player.lookX==-0.5 and p.player.lookZ==0.7)
 assert(p.teleportPlayer and p.player.randomIdle and p.player.useDirectMotion and p.player.bankID==7 and p.player.motionID==9)
 assert(p.pawns[1].x==4 and p.pawns[1].anim=='LivSitChairBook01' and p.pawns[1].motionID==13)
@@ -46,6 +46,7 @@ check_preset(old)
 assert(old.pawns[9].x==7 and old.pawns[9].anim=='LivSitPose','Existing extended seat overwritten')
 
 local cat='Normal'
+local preset=old
 -- ADD PRESET IMPLEMENTATION --
 local copy=options.Presets.Normal[2]
 assert(copy and copy.player~=old.player and copy.pawns[1]~=old.pawns[1],'New preset shares editable seats')
@@ -53,12 +54,17 @@ assert(copy.player.x==old.player.x and copy.pawns[1].motionID==old.pawns[1].moti
 assert(#copy.pawns==9 and copy.pawns[9]~=old.pawns[9] and copy.pawns[9].x==7,'Extra seats not independently cloned')
 check_preset(copy)
 
-local labels={}
-local function field(label,value) labels[label]=true;return false,value end
+local labels,previous_label,same_line={},nil,false
+local function field(label,value)
+    if label=='Use Direct Motion' then assert(previous_label=='Random Idle' and same_line,'Random Idle must be directly left of Use Direct Motion') end
+    labels[label]=true;previous_label=label;same_line=false;return false,value
+end
 local imgui={tree_node=function() return true end,tree_pop=function() end,
-    checkbox=field,drag_float=field,drag_int=field,input_text=field}
+    checkbox=field,drag_float=field,drag_int=field,input_text=field,same_line=function() same_line=true end}
 -- EDITOR IMPLEMENTATION --
-draw_seat_editor('Player',old.player)
+draw_seat_editor('Player',old.player,true)
+assert(not labels['Random Idle'] and not labels['Use Direct Motion'] and not labels['Bank ID'] and not labels['Animation'],
+    'Player editor still exposes animation controls')
 old.pawns[1].useDirectMotion=false
 draw_seat_editor('Pawn',old.pawns[1])
 assert(not labels['Freeze AI'] and not labels['Use Ox Anchor'])

@@ -36,6 +36,9 @@ local function object(name, p)
     function obj:get_CharaID() return self.id end
     function obj:get_ActionManager() return self.am end
     function obj:call(method,p)
+        if method=='get_GameObject' then return self:get_GameObject() end
+        if method=='get_Name' then return self:get_Name() end
+        if method=='getComponent(System.Type)' and p=='app.Character' then return self end
         assert(method=='warp(via.vec3, app.CharacterWarpOption)', method)
         self.pos, self.physics_pos, self.warps = p, p, (self.warps or 0)+1
     end
@@ -46,7 +49,7 @@ local function object(name, p)
     obj.am = {Fsm=obj.machine, CurrentActionList={[0]={Name='Wait'}}}
     function obj.am:get_GameObject() return obj end
     function obj.am:call(method, priority, node, layer)
-        if force_fail and priority==1 then error('Injected seat failure') end
+        if force_fail and node~='Wait' and (priority==0 or priority==1) then error('Injected seat failure') end
         local str = {ToString=function() return node end}
         local hook = hooks['requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)']
         if hook and hook({nil,self,priority,str,layer})=='skip' then return end
@@ -140,7 +143,10 @@ local function definition(name)
         local fields={}
         for key,value in pairs(values) do fields[#fields+1]={is_static=function() return true end,get_name=function() return key end,get_data=function() return value end} end
         return fields
-    end,get_method=function(_,sig) return sig end}
+    end,get_method=function(_,sig)
+        if name=='app.Sm80_042_Parts' then return name..'.'..sig end
+        return sig
+    end}
 end
 local kb={call=function(_,_,key) return kb_down[key] or false end}
 local gp={call=function(_,m) if m=='get_AxisL()' then return {x=stick_x} end return gp_bits end}

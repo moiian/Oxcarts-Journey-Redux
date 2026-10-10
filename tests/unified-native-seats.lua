@@ -169,6 +169,8 @@ assert(native_camera_ready(),'Player presets disabled while still in driver seat
 pre_callbacks.UpdateBehavior()
 assert(camera_transform.pos.x==7 and (human.pos-position):length()==0,'Player display Transform was not restored before simulation')
 local original_gui_field=gui['<IsDispPhotoModeAll>k__BackingField']
+local active_layout=settings.presets[settings.preset]._canonical
+active_layout.teleportPlayer=true
 gui['<IsDispPhotoModeAll>k__BackingField']=true;is_paused=true
 local player_action=human.am.CurrentActionList[0].Name
 local photo_warps,photo_falls=human.test_controller.warps,human.test_fall.reset_calls
@@ -180,6 +182,15 @@ callbacks.PrepareRendering()
 local photo_target=native_display_position(state.native_drive.cart.anchor,settings.presets[settings.preset].slots[1])
 assert((human.pos-photo_target):length()==0,
     'Photo mode did not apply player Transform preset')
+active_layout.teleportPlayer=false
+bus.driver.player_adjustment_changed(active_layout)
+assert((human.pos-position):length()==0,'Disabling driver adjustment did not restore native display immediately')
+pre_callbacks.PrepareRendering()
+assert((human.pos-position):length()==0,'Disabled driver adjustment still writes preset position in photo mode')
+assert(native_camera_ready(),'Adjust Player incorrectly disabled camera readiness')
+active_layout.teleportPlayer=true
+pre_callbacks.PrepareRendering()
+assert((human.pos-photo_target):length()==0,'Reenabling driver adjustment lost saved coordinates')
 assert(human.test_controller.warps==photo_warps and human.test_fall.reset_calls==photo_falls,
     'Player display override performed a physical teleport/fall reset')
 assert_native_facing(human,state.native_drive.cart.anchor,settings.presets[settings.preset].slots[1])
@@ -221,9 +232,17 @@ assert(#bindings==3,"Shared manual seats did not acquire three companions")
 for _,r in ipairs(bindings) do
     assert(r.fsm_machine and r.fsm_machine.enabled==true,"Seat event must unfreeze first")
     assert(r.char.test_fall.reset_calls==1,"One fall reset required on first seat")
+    local trace=_G.OJR_RuntimeDiagnostics.traces[r]
+    assert(trace and trace.samples[1].phase=='before-request',"Actual initial seating lacks pre-request evidence")
+    assert(trace.samples[2].phase=='requested' and trace.samples[2].fsm_enabled==true,"Actual request checkpoint missing")
 end
 bus.journey.manual_tick()
 for _,r in ipairs(bindings) do assert(not r.fsm_machine.enabled,"Shared next-frame FSM freeze missing") end
+for _,r in ipairs(bindings) do
+    local samples=_G.OJR_RuntimeDiagnostics.traces[r].samples
+    assert(samples[3].phase=='before-freeze' and samples[3].fsm_enabled==true,"Pre-freeze checkpoint misplaced")
+    assert(samples[4].phase=='after-freeze' and samples[4].fsm_enabled==false,"Post-freeze checkpoint misplaced")
+end
 local first=settings.preset
 assert(driver_debug_bridge.switch_preset(nil,true))
 assert(settings.preset~=first and #bindings==3,"Shared layout switch failed")
@@ -233,6 +252,58 @@ for _,r in ipairs(bindings) do
 end
 bus.journey.manual_tick()
 for _,r in ipairs(bindings) do assert(not r.fsm_machine.enabled,"Preset switch did not refreeze next frame") end
+-- Exercise the real root UI -> deferred journey selection -> driver switch path.
+do
+    local original_imgui=imgui
+    local stack,depth,backup_seen,skip_seen={},0,false,false
+    local current_index=settings.presets[settings.preset]._index
+    local menu_target=current_index==1 and 2 or 1
+    local last_field,same_line
+    local function field(label,value)
+        if label=='Skip this preset when player is passenger' then
+            assert(last_field=='Adjust Player' and same_line,'Passenger skip is not adjacent to Adjust Player')
+            skip_seen=true
+        end
+        last_field,same_line=label,false
+        return false,value
+    end
+    imgui={}
+    function imgui.tree_node(label)
+        assert(label~='Passenger backup keybinds' and not label:find('Cross Hotbar Key',1,true),'Obsolete backup section remains')
+        if label=='Other Settings' then return false end
+        if label=='Backup keybinds' then
+            assert(stack[#stack]=='Keybind settings','Backup controls are not inside Keybind settings')
+            backup_seen=true
+        end
+        stack[#stack+1]=label;return true
+    end
+    function imgui.tree_pop() table.remove(stack) end
+    function imgui.push_id() depth=depth+1 end
+    function imgui.pop_id() depth=depth-1 end
+    function imgui.combo(label,index)
+        if label=='Active layout' then return true,menu_target end
+        return false,index
+    end
+    function imgui.begin_table() return true end
+    for _,name in ipairs({'end_table','table_next_row','table_next_column','table_header','text','spacing','separator'}) do imgui[name]=function() end end
+    function imgui.button() return false end
+    function imgui.same_line() same_line=true end
+    for _,name in ipairs({'checkbox','input_text','drag_float','drag_int','slider_float'}) do imgui[name]=field end
+    local before=pawns[1].test_fall.reset_calls
+    callbacks.ui()
+    assert(backup_seen and skip_seen and #stack==0 and depth==0,'Unified UI nesting failed')
+    assert(settings.presets[settings.preset]._index==current_index and pawns[1].test_fall.reset_calls==before,
+        'UI draw immediately applied a pose')
+    assert(not pawns[1].machine.enabled,'UI draw changed frozen FSM')
+    callbacks.LateUpdateBehavior()
+    assert(settings.presets[settings.preset]._index==menu_target and pawns[1].test_fall.reset_calls==before+1,
+        'Behavior phase did not apply menu-selected layout exactly once')
+    assert(pawns[1].machine.enabled,'Menu switch refroze before a behavior frame could run')
+    callbacks.LateUpdateBehavior()
+    assert(not pawns[1].machine.enabled and pawns[1].test_fall.reset_calls==before+1,
+        'Menu switch missed next-frame freeze or applied twice')
+    imgui=original_imgui
+end
 local reset_count=pawns[1].test_fall.reset_calls
 for i=1,4 do bus.journey.manual_tick();bus.journey.manual_pose() end
 assert(pawns[1].test_fall.reset_calls==reset_count,"Routine follow/render reset fall")

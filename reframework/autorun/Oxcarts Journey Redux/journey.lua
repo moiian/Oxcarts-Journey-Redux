@@ -196,11 +196,10 @@ local npc_manager = sdk.get_managed_singleton("app.NPCManager")
 local scene_manager = sdk.get_native_singleton("via.SceneManager")
 local scene_manager_type = sdk.find_type_definition("via.SceneManager")
 local gui_get_object = sdk.find_type_definition("via.gui.Control"):get_method("getObject(System.String)")
-local gui_color_type = sdk.find_type_definition("via.Color")
 local gui_base_type = sdk.typeof("app.GUIBase")
 
-local cart_action_filters = {}
-local frame_jobs = {}
+local movement_control = assert(rawget(_G,"OJR_UnifiedSpeed"))
+local passenger_hud = assert(rawget(_G,"OJR_PassengerHud")).new()
 local runtime_clock = 0
 local player, input
 
@@ -261,7 +260,6 @@ local seat_anchor_transform = nil
 local prior_cart_seat_state = false
 local prior_player_seat_state = false
 local prior_cart_proximity = false -- 玩家是否在车附近
-local cart_protection_range_active = false -- 全局标志，供HitController使用
 local previous_fast_travel_state = 0
 local reseat_requested_at = nil
 local photo_mode_was_active = false
@@ -314,17 +312,10 @@ local options = {
     PLAYER_NEAR_CART_NONCOMBAT = true,
     DISABLE_CAMERA = true,
     STATUS_IMMUNITY = true,
-    PREVENT_INSTABREAKS = true,
-    DISABLE_PAWN_DAMAGE = true,
     FREEZE_COMPANION_FSM = true,
+    COMPANION_PELVIS_COMPENSATION = true,
+    PREVENT_CART_BREAKUP = true,
     
-    -- Nearby cart protection multipliers.
-    GIMMICK_DAMAGE_RECEIVED = 0.01,
-    DRIVER_DAMAGE_RECEIVED = 0.01,
-    OX_DAMAGE_RECEIVED = 0.01,
-    GUARD_DAMAGE_RECEIVED = 0.51,
-    GUARD_DAMAGE_DEALT = 1.25,
-
     Key_PadModifyKey = {type = 'gamepad', key = 'LTrigBottom'},
     Key_MouseModifyKey = {type = 'keyboard', key = 'LShift'},
 
@@ -377,91 +368,29 @@ end
 -- Built-in seat layouts are grouped by cart body type.
 local function get_default_normal_presets()
     return {
-        {
-            name = "Facing Each Other", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -2.5, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        },
-        {
-            name = "Side by Side", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 0.85, z = -3.35, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        },
-        {
-            name = "Look Around", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 1.35, z = -2.0, y = 0.77, lookX = 1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.6, y = 0.23, lookX = 1.0, lookZ = 1.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        },
-        {
-            name = "Sit on the Edge", enabled = true,
-            teleportPlayer = true,
-            player = { x = 1.25, z = -2.55, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 1.25, z = -2.0, y = 0.77, lookX = -1.0, lookZ = 0.0, anim = "LivSitChairCrosslegs", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -1.25, z = -3.35, y = 0.80, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -4.2, y = 0.25, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        }
+        {["builtin_id"]="passenger:Normal:1",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-2.5},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-4.050000190734863},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
+        {["builtin_id"]="passenger:Normal:2",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[2] Side by Side",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.8999999761581421,["y"]=0.25,["z"]=-4.050000190734863},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
+        {["builtin_id"]="passenger:Normal:3",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[3] Look Around",["pawns"]={{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.35,["y"]=0.77,["z"]=-2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=1,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.6},{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=-1.350000023841858,["y"]=0.7699999809265137,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
+        {["builtin_id"]="passenger:Normal:4",["driver"]={["randomIdle"]=false,["x"]=-0.050999999046325684,["y"]=0.9200000166893005,["yaw"]=178,["z"]=0.33399999141693115},["driver_camera"]={["distance"]=3.9820001125335693,["distance_enabled"]=true,["fov"]=60.84600067138672,["fov_enabled"]=true},["enabled"]=true,["name"]="[4] Sit on the Edge",["pawns"]={{["anim"]="LivSitChairCrosslegs",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1.25,["y"]=0.8,["z"]=-3.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.25,["z"]=-4.2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.25,["z"]=-3.450000047683716},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=1.25,["y"]=0.77,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=true}
     }
 end
 
 local function get_default_rainy_presets()
     return {
-        {
-            name = "Rainy - Side by Side", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 0.85, z = -3.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.85, z = -3.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        },
-        {
-            name = "Rainy - Facing Each Other", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = -1.0, z = -2.35, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.95, z = -4.1, y = 0.23, lookX = -1.0, lookZ = 0.0, anim = "SitOnChairCrossArmStart", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.85, z = -4.1, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        }
+        {["builtin_id"]="passenger:Rainy:1",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},["driver_camera"]={["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Rainy - Side by Side",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-3.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.23,["z"]=-3.35},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false},
+        {["builtin_id"]="passenger:Rainy:2",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=-0.051,["y"]=0.92,["yaw"]=178,["z"]=0.334},["driver_camera"]={["distance"]=4.803999900817871,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[2] Rainy - Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-1,["y"]=0.23,["z"]=-2.35},{["anim"]="SitOnChairCrossArmStart",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.95,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-4.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.1},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-2.7}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false}
     }
 end
 
 local function get_default_wealthy_presets()
     return {
-        {
-            name = "Luxury - Facing Each Other", enabled = true,
-            teleportPlayer = false,
-            player = { x = 0.85, z = -2.55, y = 0.23, lookX = 1.0, lookZ = 0.0, anim = "Wait", randomIdle = false, useDirectMotion = false, bankID = 0, motionID = 0 },
-            pawns = {
-                { x = 0.45, z = -3.15, y = 0.23, lookX = 0.0, lookZ = -1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = -0.5, z = -1.2, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 },
-                { x = 0.5, z = -1.25, y = 0.23, lookX = 0.0, lookZ = 1.0, anim = "SitOnChairActions", randomIdle = true, useDirectMotion = false, bankID = 0, motionID = 0 }
-            }
-        }
+        {["builtin_id"]="passenger:Wealthy:1",["driver"]={["anim"]="SitOnChairActions",["randomIdle"]=false,["x"]=0,["y"]=0.92,["yaw"]=180,["z"]=0.274},["driver_camera"]={["distance"]=5.704999923706055,["distance_enabled"]=true,["fov"]=75.33699798583984,["fov_enabled"]=true},["enabled"]=true,["name"]="[1] Luxury - Facing Each Other",["pawns"]={{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=-1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.45,["y"]=0.23,["z"]=-3.15},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.5,["y"]=0.23,["z"]=-1.2},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=0,["lookZ"]=1,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.5,["y"]=0.23,["z"]=-1.25},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0,["y"]=0.85,["z"]=-1.9000000000000001},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-2.7},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=-1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=-0.85,["y"]=0.85,["z"]=-3.5000000000000004},{["anim"]="SitOnChairActions",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=true,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.85,["z"]=-4.300000000000001}},["player"]={["anim"]="Wait",["bankID"]=0,["lookX"]=1,["lookZ"]=0,["motionID"]=0,["randomIdle"]=false,["useDirectMotion"]=false,["x"]=0.85,["y"]=0.23,["z"]=-2.55},["skipPassenger"]=false,["teleportPlayer"]=false}
     }
 end
 
 -- Upgrade older settings in place and fill newly introduced seat fields.
-local function normalize_presets()
+local function normalize_presets(target)
+    local options=target or options
     if type(options.Presets) ~= "table" then
         options.Presets = {}
     end
@@ -484,8 +413,9 @@ local function normalize_presets()
     
     for cat_name, cat_presets in pairs(options.Presets) do
         for _, preset in ipairs(cat_presets) do
-            if type(preset.enabled) ~= "boolean" then preset.enabled = true end
+            preset.enabled = true -- All layouts participate in cycling, including legacy disabled ones.
             if type(preset.teleportPlayer) ~= "boolean" then preset.teleportPlayer = false end
+            preset.skipPassenger=preset.skipPassenger==true
             preset.name = preset.name or "Unnamed Preset"
             
             preset.player = preset.player or {}
@@ -569,10 +499,13 @@ local function load_options()
     end
     normalize_presets()
     options.FREEZE_COMPANION_FSM=true
+    options.COMPANION_PELVIS_COMPENSATION=true
+    options.PREVENT_CART_BREAKUP=true
     rebuild_input_watchlist()
 end
 
 local function persist_options()
+    if unified_presets and unified_presets.reindex then unified_presets.reindex() end
     local save_data = {}
     for k, v in pairs(options) do
         if type(v) == "table" and is_key_valid(v) and k:find("Key_") then
@@ -594,21 +527,9 @@ local function restore_default_key_bindings()
 end
 
 load_options()
-unified_presets.init(options,preset_cursor,persist_options,normalize_presets)
-
-local driver_character_ids = { ["ch300795"] = true, ["ch300298"] = true, ["ch300291"] = true, ["ch300793"] = true, ["ch300367"] = true, ["ch300794"] = true }
-local guard_character_ids = { ["ch300802"] = true, ["ch300803"] = true, ["ch300804"] = true, ["ch300260"] = true, ["ch300383"] = true, ["ch300258"] = true, ["ch300056"] = true, ["ch300055"] = true, ["ch300057"] = true, ["ch300797"] = true, ["ch300796"] = true, ["ch300798"] = true, ["ch300558"] = true, ["ch300369"] = true, ["ch300545"] = true, ["ch300801"] = true, ["ch300800"] = true, ["ch300799"] = true }
-local protected_cart_part_ids = { ["gm80_042"] = true, ["gm80_052"] = true,["sm80_074"] = true, ["sm80_051"] = true, ["sm80_052"] = true,["gm81_004"] = true }
-
-local entity_damage_rules = {}
-local function rebuild_damage_rules()
-    entity_damage_rules = {}
-    for str,_ in pairs(driver_character_ids) do entity_damage_rules[str] = { received = options.DRIVER_DAMAGE_RECEIVED } end
-    for str,_ in pairs(guard_character_ids) do entity_damage_rules[str] = { received = options.GUARD_DAMAGE_RECEIVED, dealt = options.GUARD_DAMAGE_DEALT } end
-    for str,_ in pairs(protected_cart_part_ids) do entity_damage_rules[str] = { received = options.GIMMICK_DAMAGE_RECEIVED } end
-    entity_damage_rules["ch299003"] = { received = options.OX_DAMAGE_RECEIVED }
-end
-rebuild_damage_rules() -- 初始化伤害倍率表
+unified_presets.init(options,preset_cursor,persist_options,normalize_presets,{
+    Normal=get_default_normal_presets(),Rainy=get_default_rainy_presets(),Wealthy=get_default_wealthy_presets()
+})
 
 local function gameplay_is_paused()
     local paused = false
@@ -854,66 +775,6 @@ local function alternate_binding_is_down(feature)
     return false
 end
 
-local seated_hotbar_paths = {
-    ["Y (Triangle)"] = "PNL_top/PNL_L02/PNL_txt", ["A (X)"] = "PNL_top/PNL_R03/PNL_txt",
-    ["X (Square)"]   = "PNL_top/PNL_L03/PNL_txt", ["B (Circle)"] = "PNL_top/PNL_R02/PNL_txt",
-    ["LT"]           = "PNL_top/PNL_L00/PNL_txt", ["RT"] = "PNL_top/PNL_R00/PNL_txt",
-    ["LB"]           = "PNL_top/PNL_L01/PNL_txt", ["RB"] = "PNL_top/PNL_R01/PNL_txt",
-}
-
-
-local function render_seated_hotbar_slot(button, message, is_held)
-    if not button then return end
-    pcall(function() button:set_PlayState("DEFAULT") end)
-    local textObject = button:get_Child()
-    if not textObject then return end 
-    pcall(function() textObject:set_Message(message) end)
-    local col = ValueType.new(gui_color_type)
-    col.rgba = 0x8FF0FBFF
-    pcall(function() textObject:set_Color(col) end)
-    local col2 = ValueType.new(gui_color_type)
-    col2.rgba = 0xC8FFFFFF
-    local nextObj = button:get_Next()
-    if nextObj then pcall(function() nextObj:set_Color(col2) end) end 
-    if is_held then
-        pcall(function() button:set_ColorScale(Vector4f.new(4,4,4,4)) end)
-        pcall(function() button:set_ColorOffset(Vector3f.new(15,14,10)) end)
-    else
-        pcall(function() button:set_ColorScale(Vector4f.new(1,1,1,1)) end)
-        pcall(function() button:set_ColorOffset(Vector3f.new(0,0,0)) end)
-    end
-end
-
-
-local function cancel_scheduled_actions(address)
-    cart_action_filters[address] = nil
-    frame_jobs[address] = nil
-end
-
-local function suppress_action_interrupts(character,duration)
-    local address = character:get_address()
-    local staggers = {"damage","dmg","repelled","caught","tumble","wince","blown","down","die","success","escape","balance","break","cliffgrab","bridge"}
-    cart_action_filters[address] = function(data)
-        if data.character ~= character then return end
-        -- Let UI transitions run, but do not discard the gameplay filter because
-        -- a pause/menu action resembles a stagger or escape action.
-        if cart_trip.pause.active or cart_trip.pause.resume_pending then return end
-        if data.priority == 0 then return end
-        if data.layer > 1 then return end
-        for _,str in ipairs(staggers) do
-            if string.find(data.node:lower(),str,1,true) then
-                cancel_scheduled_actions(address)
-                return
-            end
-        end
-        return true
-    end
-    local start = runtime_clock
-    frame_jobs[address] = function()
-        if runtime_clock - start > duration then cancel_scheduled_actions(address) end
-    end
-end
-
 local function collect_party_pawns()
     local pawn_manager = sdk.get_managed_singleton("app.PawnManager")
     if not pawn_manager then return nil end -- Unavailable is not an empty party.
@@ -1025,6 +886,8 @@ function pawn_seat_physics.request_pose_action(character, node, priority)
     if not ok then error(err) end
 end
 function pawn_seat_physics.restore_fsm(binding)
+    if rawget(_G,"OJR_RuntimeDiagnostics") then _G.OJR_RuntimeDiagnostics.cancel_pose(binding) end
+    if rawget(_G,"OJR_UnifiedPelvis") then _G.OJR_UnifiedPelvis.invalidate(binding) end
     if binding and binding.fsm_machine then
         if is_character_valid(binding.char) then
             local ok,err=pcall(function() binding.fsm_machine:call("set_Enabled(System.Boolean)",binding.fsm_enabled) end)
@@ -1036,6 +899,7 @@ function pawn_seat_physics.restore_fsm(binding)
 end
 function pawn_seat_physics.begin_pose(binding)
     if not binding or binding.char==player then return end
+    if rawget(_G,"OJR_UnifiedPelvis") then _G.OJR_UnifiedPelvis.invalidate(binding) end
     if options.FREEZE_COMPANION_FSM==false then pawn_seat_physics.restore_fsm(binding);return end
     if not binding.fsm_machine then
         local human=binding.char["<Human>k__BackingField"]
@@ -1060,7 +924,10 @@ function pawn_seat_physics.update_fsm(binding)
     local due=binding.fsm_freeze_frame and (pawn_seat_physics.frame or 0)>=binding.fsm_freeze_frame
         or (not binding.fsm_freeze_frame and runtime_clock>=(binding.fsm_freeze_at or math.huge))
     if due then
+        local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
+        if diagnostics then pcall(diagnostics.mark_pose,binding,seat_anchor_transform,'before-freeze',pawn_seat_physics.frame or 0,runtime_clock) end
         binding.fsm_machine:call("set_Enabled(System.Boolean)",false)
+        if diagnostics then pcall(diagnostics.mark_pose,binding,seat_anchor_transform,'after-freeze',pawn_seat_physics.frame or 0,runtime_clock) end
     end
 end
 function pawn_seat_physics.advance_frame()
@@ -1103,9 +970,49 @@ function pawn_seat_physics.place(character,seat_spec)
     local target=vec_add(pos,vec_add(vec_scale(x,seat_spec.lookX),vec_scale(z,seat_spec.lookZ)))
     if seat_spec.lookX==0 and seat_spec.lookZ==0 then target=vec_add(pos,x) end
     local transform=character:get_Transform()
+    local observer=rawget(_G,"OJR_HeightObserver")
+    if type(observer)=="function" then pcall(observer,"BeforeSeatWrite",character,anchor,seat_spec,pawn_seat_physics.frame) end
+    if character==player then
+        pawn_seat_physics.restore_player_display()
+        local p=transform:get_Position()
+        local ok,rotation=pcall(function() return transform:get_Rotation() end)
+        pawn_seat_physics.player_display={char=character,position=Vector3f.new(p.x,p.y,p.z),rotation=ok and rotation or nil}
+    end
     transform:set_Position(pos)
     transform:lookAt(target,y)
     if character~=player then pawn_seat_physics.synchronize(character,transform) end
+    if type(observer)=="function" then pcall(observer,"AfterSeatWrite",character,anchor,seat_spec,pawn_seat_physics.frame) end
+end
+function pawn_seat_physics.restore_player_display()
+    local display=pawn_seat_physics.player_display
+    pawn_seat_physics.player_display=nil
+    if display and is_character_valid(display.char) then
+        pcall(function()
+            local transform=display.char:get_Transform()
+            transform:set_Position(display.position)
+            if display.rotation then transform:set_Rotation(display.rotation) end
+        end)
+    end
+end
+function pawn_seat_physics.sync_player_adjustment(preset)
+    -- Update only the player binding; do not restart any companion pose/FSM.
+    for i=#seat_bindings,1,-1 do
+        if seat_bindings[i].char==player then table.remove(seat_bindings,i) end
+    end
+    pawn_seat_physics.restore_player_display()
+    if not manual_cart and preset.teleportPlayer
+        and is_character_valid(player) and player_uses_cart_seat_node() then
+        if not seating_lock_active then
+            local ox=find_active_ox()
+            local body=ox and find_cart_body(ox)
+            if not body or not player_is_physically_seated(ox) then return end
+            seat_anchor_transform=resolve_seat_anchor(body)
+        end
+        if seat_anchor_transform then
+            table.insert(seat_bindings,{char=player,seat_spec=preset.player})
+            seating_lock_active=true
+        end
+    end
 end
 function pawn_seat_physics.release(character)
     if character ~= player and is_character_valid(character) then
@@ -1148,6 +1055,8 @@ end
 
 -- Detach every bound character and resume normal pawn control.
 local function detach_bound_characters()
+    pawn_seat_physics.pending_preset=nil
+    pawn_seat_physics.restore_player_display()
     pawn_seat_physics.follow_roster=false
     cart_trip.manual_standing_seats = false
     for _, binding in ipairs(seat_bindings) do
@@ -1166,6 +1075,18 @@ end)
 local function start_seated_animation(char, seat_spec, force_anim_node, pending_binding, legacy_switch)
     if not char or not char:get_Valid() then return end
     local is_pawn = char ~= player
+    local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
+    if is_pawn and diagnostics then
+        local observed_binding=pending_binding
+        for _,binding in ipairs(seat_bindings) do
+            if binding.char==char then observed_binding=binding;break end
+        end
+        if observed_binding then
+            pcall(diagnostics.begin_pose,observed_binding,seat_anchor_transform,force_anim_node or seat_spec.anim,
+                force_anim_node and 1 or 0,pawn_seat_physics.frame or 0,runtime_clock,
+                force_anim_node and 'random-idle' or (legacy_switch and 'preset-switch' or 'initial-or-reseat'))
+        end
+    end
     if is_pawn then
         if pending_binding then pawn_seat_physics.begin_pose(pending_binding) end
         for _, binding in ipairs(seat_bindings) do
@@ -1203,12 +1124,16 @@ local function start_seated_animation(char, seat_spec, force_anim_node, pending_
             local ok, err = pcall(function()
                 -- The companion FSM is temporarily enabled for this request.
                 if is_pawn then
-                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, legacy_switch and 0 or 1)
+                    -- Initial seating and layout changes use the same request priority.
+                    pawn_seat_physics.request_pose_action(char, force_anim_node or seat_spec.anim, force_anim_node and 1 or 0)
                 else action_manager:requestActionCore(1, force_anim_node or seat_spec.anim, 0) end
             end)
             if not ok then error(err) end
             
         elseif is_pawn then error("Pawn ActionManager unavailable") end
+    end
+    if is_pawn and pending_binding and diagnostics then
+        pcall(diagnostics.mark_pose,pending_binding,seat_anchor_transform,'requested',pawn_seat_physics.frame or 0,runtime_clock)
     end
 end
 
@@ -1313,9 +1238,7 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
     if not add_missing_only then detach_bound_characters() end
 
     if not manual_cart and not add_missing_only and preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
-        start_seated_animation(player, preset.player)
-        local next_idle = preset.player.randomIdle and (runtime_clock + math.random() * 25 + 5) or nil
-        table.insert(seat_bindings, {char = player, seat_spec = preset.player, next_idle_time = next_idle})
+        table.insert(seat_bindings, {char = player, seat_spec = preset.player})
     end
 
     local occupied,assigned,eligible={},{},{}
@@ -1380,7 +1303,7 @@ local function sit_with_next_preset()
     local next_idx = last_sit_preset[cat] and (preset_cursor[cat] or 1) or 0
     for i = 1, #presets do
         next_idx = next_idx % #presets + 1
-        if presets[next_idx].enabled then
+        if presets[next_idx].enabled and not (player_is_physically_seated(ox) and presets[next_idx].skipPassenger) then
             preset_cursor[cat] = next_idx
             if pawn_seat_physics.menu then pawn_seat_physics.menu.indices[cat]=next_idx end
             if bind_pawns_to_seats(true) then
@@ -1392,6 +1315,33 @@ local function sit_with_next_preset()
             end
             return
         end
+    end
+end
+
+function pawn_seat_physics.queue_preset(family,index)
+    local preset=options.Presets[family] and options.Presets[family][index]
+    if preset then pawn_seat_physics.pending_preset={family=family,preset=preset} end
+end
+function pawn_seat_physics.apply_pending_preset()
+    local pending=pawn_seat_physics.pending_preset
+    if not pending or gameplay_is_paused() then return end
+    pawn_seat_physics.pending_preset=nil
+    local ox=find_active_ox()
+    local body=ox and find_cart_body(ox)
+    if not body or classify_cart_model(body)~=pending.family then return end
+    local index
+    for i,p in ipairs(options.Presets[pending.family]) do if p==pending.preset then index=i;break end end
+    if not index then return end -- Deleted or replaced while waiting for gameplay.
+    if manual_cart then
+        if driving_bus.driver then driving_bus.driver.layout_selected(pending.family,index) end
+        return
+    end
+    if external_driver_active() then return end
+    preset_cursor[pending.family]=index
+    if seating_lock_active and bind_pawns_to_seats(true) then
+        cart_trip.manual_standing_seats=not player_is_physically_seated(ox)
+        last_sit_preset[pending.family]=index
+        last_sit_request_at=runtime_clock
     end
 end
 
@@ -1503,15 +1453,10 @@ local function request_cart_locomotion(ox, nodeName, isDash, automatic)
     local success, current_action = pcall(function() return action_manager.CurrentActionList[0] end)
     if not success or not current_action then return end
     
-    local action_name = current_action.Name
-    if not action_name then return end
-    for _,str in ipairs({"damage","dmg","repelled","caught","tumble","wince","blown","down","die","success","escape","balance","break","cliffgrab","bridge"}) do
-        if string.find(action_name:lower(),str,1,true) then return end
-    end
-    
-    action_manager:requestActionCore(0, nodeName, 0)
+    if not movement_control.can_command(ox) then return end
+    movement_control.issue(function() action_manager:requestActionCore(0, nodeName, 0) end)
     if not automatic then cart_trip.auto_paused = not isDash end
-    suppress_action_interrupts(ox, isDash and options.DASH_DURATION or 2)
+    movement_control.hold(ox,nodeName,isDash and options.DASH_DURATION or 2,runtime_clock)
     if isDash then
         cart_trip.departure_pending = false
         cart_trip.walk_since, cart_trip.walk_angle, cart_trip.walk_turn = nil, nil, 0
@@ -1664,11 +1609,11 @@ local function resolve_steering_cow(ox)
 end
 
 local function stop_cart_rush(ox, reason, exit_action, keep_live_action, force_exit_action)
+    movement_control.clear()
     if reason then
         cart_trip.stop_reason = reason
     end
     if ox then
-        pcall(function() cancel_scheduled_actions(ox:get_address()) end)
         if (cart_trip.rush_requested_at or force_exit_action) and not keep_live_action then
             pcall(function()
                 local action_manager = ox["<ActionManager>k__BackingField"]
@@ -1838,14 +1783,14 @@ local function finish_cart_pause(ox)
     -- The same actor can expose a rebuilt status wrapper after a menu; that alone
     -- is not a save reload and must not discard its passenger/rush state.
     cart_trip.paid_status_address = status:get_address()
-    local blocked = distance > 20 or destination.reason or cart_is_overturned(ox)
+    local blocked = distance > 15 or destination.reason or cart_is_overturned(ox)
         or status_is_true(status, "isBroken_OxCart") or status_is_true(status, "isDead_Ox")
         or status_is_true(status, "isArrived")
     if pause.was_rushing and cart_trip.rush_requested_at and not blocked and not cart_trip.auto_paused then
         local remaining = options.DASH_DURATION - (runtime_clock - pause.rush_started_at)
         if remaining > 0 then
             if get_cart_action(ox):lower() == "dash" then
-                suppress_action_interrupts(ox, remaining)
+                movement_control.hold(ox,"Dash",remaining,runtime_clock)
             else
                 -- Restoring an existing rush is not a new auto-start: the player
                 -- may have stood up before opening the menu, but is still nearby.
@@ -1855,7 +1800,7 @@ local function finish_cart_pause(ox)
             end
             if cart_trip.rush_requested_at then
                 cart_trip.rush_requested_at = pause.rush_started_at
-                suppress_action_interrupts(ox, remaining)
+                movement_control.hold(ox,"Dash",remaining,runtime_clock)
                 pause.last_result = "previous rush restored; no three-second restart"
             else
                 pause.last_result = "rush request rejected; use normal recovery"
@@ -1955,13 +1900,13 @@ local function update_cart_trip(ox, physically_sitting)
     end
     -- Keep the existing paid-trip braking distance independent of pawn release.
     local player_distance = player_cart_distance(ox)
-    if player_distance and player_distance > 20.0 then
+    if player_distance and player_distance > 15.0 then
         reset_auto_walk()
-        cart_trip.auto_reason = "player/cart distance exceeds 20"
+        cart_trip.auto_reason = "player/ox distance exceeds 15"
         local paid_ok, paid = pcall(function() return status and status:call("get_isPayMoney") end)
         if paid_ok and paid == true then
             local force_wait = get_cart_action(ox):lower() ~= "wait"
-            stop_cart_rush(ox, "paid player left cart beyond 20", "Wait", false, force_wait)
+            stop_cart_rush(ox, "paid player left ox beyond 15", "Wait", false, force_wait)
         end
         return
     end
@@ -2142,6 +2087,16 @@ local function enforce_seat_transforms(ox, position_only)
             if anchor_transform then
                 local updated, update_error = pcall(function()
                     pawn_seat_physics.place(character,seat_spec)
+                    local fall_test=rawget(_G,"OJR_DebugFallResetTest")
+                    if not position_only and character~=player and type(fall_test)=="table" and fall_test.enabled==true then
+                        local reset_ok,reset_error=pcall(pawn_seat_physics.reset_fall,character)
+                        if reset_ok then
+                            fall_test.resets=(fall_test.resets or 0)+1
+                        else
+                            fall_test.errors=(fall_test.errors or 0)+1
+                            fall_test.last_error=tostring(reset_error)
+                        end
+                    end
                 end)
                 if not updated and binding.position_error ~= tostring(update_error) then
                     binding.position_error = tostring(update_error)
@@ -2179,6 +2134,18 @@ end
 
 local journey_handoff = { suspended = false, restore_seats = false }
 driving_bus.journey = {
+    diagnostics_render = function()
+        local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
+        if diagnostics and seat_anchor_transform then
+            for _,binding in ipairs(seat_bindings) do
+                diagnostics.sample_pose(binding,seat_anchor_transform,pawn_seat_physics.frame or 0,runtime_clock)
+            end
+        end
+    end,
+    pelvis_tick = function()
+        local compensation=rawget(_G,"OJR_UnifiedPelvis")
+        if compensation then compensation.tick(seat_bindings,seat_anchor_transform,player,options.COMPANION_PELVIS_COMPENSATION==true and seating_lock_active,runtime_clock) end
+    end,
     passenger_active = function()
         return not external_driver_active() and player_is_cart_passenger(find_active_ox())
     end,
@@ -2204,8 +2171,10 @@ driving_bus.journey = {
         release_pawns_at_intermediate_stop("explicit companion release")
     end,
     sit = sit_with_next_preset,
+    draw_backup_keybinds=function() pawn_seat_physics.draw_backup_keybinds() end,
     presets = unified_presets,
     begin_manual = function(cart)
+        passenger_hud:restore()
         seating_lock_active=false
         detach_bound_characters()
         stop_cart_rush(cart.ox,"manual takeover",nil,true)
@@ -2221,9 +2190,7 @@ driving_bus.journey = {
         player=character_manager["<ManualPlayer>k__BackingField"]
         journey_handoff.suspended=true
         journey_handoff.restore_seats=false
-        for k in pairs(frame_jobs) do frame_jobs[k]=nil end
-        for k in pairs(cart_action_filters) do cart_action_filters[k]=nil end
-        cart_protection_range_active=false
+        movement_control.clear()
     end,
     bind_manual = function(cart)
         if not manual_cart or manual_cart.body~=cart.body then return false end
@@ -2292,9 +2259,8 @@ driving_bus.journey = {
         journey_handoff.suspended = true
         seating_lock_active = false
         detach_bound_characters()
-        for key in pairs(cart_action_filters) do cart_action_filters[key] = nil end
-        for key in pairs(frame_jobs) do frame_jobs[key] = nil end
-        cart_protection_range_active = false
+        movement_control.clear()
+        passenger_hud:restore()
     end,
     resume = function()
         journey_handoff.suspended = false
@@ -2336,9 +2302,13 @@ re.on_frame(function()
     end
 end)
 
+re.on_pre_application_entry("UpdateBehavior",function() pawn_seat_physics.restore_player_display() end)
+
 re.on_application_entry("LateUpdateBehavior", function()
     if external_driver_active() then
+        passenger_hud:restore()
         local ok,err=pcall(driving_bus.journey.manual_tick)
+        if ok then ok,err=pcall(pawn_seat_physics.apply_pending_preset) end
         if not ok then
             if driving_bus.driver then pcall(driving_bus.driver.abort) end
             pcall(driving_bus.journey.end_manual)
@@ -2353,6 +2323,8 @@ re.on_application_entry("LateUpdateBehavior", function()
     observe_cart_pause(ox)
     player = character_manager["<ManualPlayer>k__BackingField"]
     if not player or not player:get_Valid() then
+        movement_control.clear()
+        passenger_hud:restore()
         seating_lock_active = false
         detach_bound_characters()
         return
@@ -2377,15 +2349,13 @@ re.on_application_entry("LateUpdateBehavior", function()
         if in_photo_mode then enforce_seat_transforms(ox, true) end
         return
     end
+    pawn_seat_physics.apply_pending_preset()
     if not finish_cart_pause(ox) then return end
     update_cart_normal_guard(ox)
     pawn_seat_physics.prune_party()
     if seating_lock_active then bind_pawns_to_seats(false,true) end
 
-    for k, fn in pairs(frame_jobs) do 
-        local success, _ = pcall(fn)
-        if not success then frame_jobs[k] = nil end
-    end
+    movement_control.expire(ox,runtime_clock)
 
     -- Rebuild seat bindings shortly after a fast-travel transition ends.
     local current_ft_state = 0
@@ -2421,17 +2391,16 @@ re.on_application_entry("LateUpdateBehavior", function()
     end
 
     local is_near = ox and player_is_near_cart(ox) or false
-    cart_protection_range_active = is_near -- 赋值给全局变量供Hook使用
     
     -- The per-frame trip check handles confirmed >8 body-center distance and releases only
     -- followers, without requiring a previous near -> far transition.
     prior_cart_proximity = is_near
 
     local sitting = player_is_cart_passenger(ox)
+    if not sitting then passenger_hud:restore() end
     local physically_sitting = player_is_physically_seated(ox)
     
     if prior_player_seat_state and not physically_sitting then
-        cart_trip.manual_speed=nil
         release_pawns_at_intermediate_stop("player ended passenger interaction")
         if seat_bindings and #seat_bindings > 0 then
             for i = #seat_bindings, 1, -1 do
@@ -2452,9 +2421,9 @@ re.on_application_entry("LateUpdateBehavior", function()
     -- Maintain seat transforms after gameplay state changes have settled.
     enforce_seat_transforms(ox, false)
 
-    if driving_bus.driver and driving_bus.driver.capturing() then return end
+    if driving_bus.driver and driving_bus.driver.capturing() then passenger_hud:restore();return end
     local ui_ok,ui_open=pcall(function() return reframework:is_drawing_ui() end)
-    if ui_ok and ui_open then return end
+    if ui_ok and ui_open then passenger_hud:restore();return end
 
     local modifier_held = modifier_is_down()
 
@@ -2466,18 +2435,17 @@ re.on_application_entry("LateUpdateBehavior", function()
     if scene then
         local ui010201 = scene:call("findGameObject(System.String)", "ui010201")
         local ui010201Base = ui010201 and ui010201:call("getComponent(System.Type)", gui_base_type) or nil
-
-        for _, feature in pairs(action_bindings) do
-            if feature.isUI then
-                if sitting and ui010201Base and ui010201Base:get_DrawSelf() then
-                    local path = seated_hotbar_paths[feature.skillUiKey]
-                    if path then
-                        local button = gui_get_object:call(ui010201Base.Root, path)
-                        render_seated_hotbar_slot(button, feature.nodeName and (feature.isDash and "Accelerate" or "Decelerate") or feature.name, skill_binding_is_down(feature))
-                    end
-                end
+        local labels={}
+        for _,name in ipairs({"Walk","Dash","Teleport","Stand"}) do
+            local feature=action_bindings[name]
+            if feature.isUI and feature.skillUiKey then
+                labels[feature.skillUiKey]=feature.nodeName and (feature.isDash and "Accelerate" or "Decelerate") or feature.name
             end
         end
+        passenger_hud:update(ui010201Base and ui010201Base:get_DrawSelf() and ui010201Base.Root or nil,labels,
+            function(root,path) return gui_get_object:call(root,path) end)
+    else
+        passenger_hud:restore()
     end
 
     if modifier_held and seating_lock_active then
@@ -2543,11 +2511,8 @@ re.on_application_entry("LateUpdateBehavior", function()
     end
 end)
 
-local function draw_seat_editor(label, seat_spec)
-    if imgui.tree_node(label) then
-        local c_idle, v_idle = imgui.checkbox("Random Idle", seat_spec.randomIdle)
-        if c_idle then seat_spec.randomIdle = v_idle; persist_options() end
-        
+local function draw_seat_editor(label, seat_spec, position_only)
+    if not label or imgui.tree_node(label) then
         local c1, v1 = imgui.drag_float("X (Left/Right)", seat_spec.x, 0.05, -10.0, 10.0)
         if c1 then seat_spec.x = v1; persist_options() end
         
@@ -2563,29 +2528,31 @@ local function draw_seat_editor(label, seat_spec)
         local c5, v5 = imgui.drag_float("Look Z", seat_spec.lookZ, 0.1, -1.0, 1.0)
         if c5 then seat_spec.lookZ = v5; persist_options() end
         
-        local c_dm, v_dm = imgui.checkbox("Use Direct Motion", seat_spec.useDirectMotion)
-        if c_dm then seat_spec.useDirectMotion = v_dm; persist_options() end
-        
-        if seat_spec.useDirectMotion then
-            local cb, vb = imgui.drag_int("Bank ID", seat_spec.bankID, 1, 0, 999)
-            if cb then seat_spec.bankID = vb; persist_options() end
-            
-            local cm, vm = imgui.drag_int("Motion ID", seat_spec.motionID, 1, 0, 9999)
-            if cm then seat_spec.motionID = vm; persist_options() end
-        else
-            local c6, v6 = imgui.input_text("Animation", seat_spec.anim)
-            if c6 then seat_spec.anim = v6; persist_options() end
+        if not position_only then
+            local c_idle, v_idle = imgui.checkbox("Random Idle", seat_spec.randomIdle)
+            if c_idle then seat_spec.randomIdle = v_idle; persist_options() end
+            imgui.same_line()
+            local c_dm, v_dm = imgui.checkbox("Use Direct Motion", seat_spec.useDirectMotion)
+            if c_dm then seat_spec.useDirectMotion = v_dm; persist_options() end
+
+            if seat_spec.useDirectMotion then
+                local cb, vb = imgui.drag_int("Bank ID", seat_spec.bankID, 1, 0, 999)
+                if cb then seat_spec.bankID = vb; persist_options() end
+
+                local cm, vm = imgui.drag_int("Motion ID", seat_spec.motionID, 1, 0, 9999)
+                if cm then seat_spec.motionID = vm; persist_options() end
+            else
+                local c6, v6 = imgui.input_text("Animation", seat_spec.anim)
+                if c6 then seat_spec.anim = v6; persist_options() end
+            end
         end
         
-        imgui.tree_pop()
+        if label then imgui.tree_pop() end
     end
 end
 
-re.on_draw_ui(function()
-    if imgui.tree_node("Oxcarts Journey Redux") then
-        if driving_bus.driver then driving_bus.driver.draw_ui() end
-        
-        if imgui.tree_node("Passenger backup keybinds") then
+function pawn_seat_physics.draw_backup_keybinds()
+        if imgui.tree_node("Backup keybinds") then
             imgui.spacing()
             if imgui.button("Restore default keybinds") then restore_default_key_bindings() end
             imgui.spacing()
@@ -2615,7 +2582,6 @@ re.on_draw_ui(function()
                 end
                 return true
             end
-            if imgui.tree_node("Cross Hotbar Key -- (Show only when near oxcart.)") then
                 if begin_bind_table("OJR cross hotbar bindings") then
                 draw_dual_bind("Modifier Key", "Key_PadModifyKey", "Key_MouseModifyKey")
                 draw_dual_bind("Oxcart Dash", "Key_PadModifyDash", "Key_MouseModifyDash")
@@ -2624,19 +2590,15 @@ re.on_draw_ui(function()
                 draw_dual_bind("Pawns Stand", "Key_PadModifyStand", "Key_MouseModifyStand")
                 imgui.end_table()
                 end
-                imgui.tree_pop()
-            end
-            
-            if not driving_bus.driver and imgui.tree_node("Right HotBar Key -- (Show only when riding oxcart.)") then
-                if begin_bind_table("OJR right hotbar bindings") then
-                draw_dual_bind("Oxcart Dash", "Key_PadSkillDash", "Key_MouseSkillDash")
-                draw_dual_bind("Oxcart Walk", "Key_PadSkillWalk", "Key_MouseSkillWalk")
-                draw_dual_bind("Pawns Sit/TP", "Key_PadSkillTeleport", "Key_MouseSkillTeleport")
-                draw_dual_bind("Pawns Stand", "Key_PadSkillStand", "Key_MouseSkillStand")
-                imgui.end_table()
-                end
-                imgui.tree_pop()
-            end
+            imgui.tree_pop()
+        end
+end
+
+re.on_draw_ui(function()
+    if imgui.tree_node("Oxcarts Journey Redux") then
+        if driving_bus.driver then driving_bus.driver.draw_ui()
+        elseif imgui.tree_node("Keybind settings") then
+            pawn_seat_physics.draw_backup_keybinds()
             imgui.tree_pop()
         end
 
@@ -2656,9 +2618,9 @@ re.on_draw_ui(function()
                 current_preset_name = options.Presets[active_cat][preset_cursor[active_cat]].name
             end
             imgui.text("Current Active Preset: " .. current_preset_name)
-            if imgui.button("Restore built-in driver layouts") and unified_presets.restore_builtins() then
-                if driving_bus.driver then driving_bus.driver.layout_selected(active_cat,preset_cursor[active_cat] or 1) end
-                if seating_lock_active then bind_pawns_to_seats(true) end
+            if imgui.button("Restore all built-in layouts") and unified_presets.restore_builtins() then
+                if pawn_seat_physics.menu then pawn_seat_physics.menu.indices={} end
+                pawn_seat_physics.queue_preset(active_cat,preset_cursor[active_cat] or 1)
             end
             
             imgui.separator()
@@ -2678,25 +2640,44 @@ re.on_draw_ui(function()
                 local cat = cat_info.id
                 do
                     local names={}
-                    for _,preset in ipairs(options.Presets[cat]) do names[#names+1]=preset.name..(preset.enabled and "" or " (disabled)") end
+                    for _,preset in ipairs(options.Presets[cat]) do names[#names+1]=preset.name end
                     local selected=math.max(1,math.min(#names,menu.indices[cat] or preset_cursor[cat] or 1))
                     local layout_changed,layout_value=imgui.combo("Active layout",selected,names)
                     if layout_changed and names[layout_value] then
                         selected=layout_value;menu.indices[cat]=selected
                         if cat==active_cat and options.Presets[cat][selected].enabled then
-                            preset_cursor[cat]=selected
-                            if driving_bus.driver then driving_bus.driver.layout_selected(cat,selected) end
-                            if seating_lock_active then bind_pawns_to_seats(true) end
+                            pawn_seat_physics.queue_preset(cat,selected)
                         end
                     end
                     for i, preset in ipairs(options.Presets[cat]) do
                         imgui.push_id(cat .. "_preset_" .. i)
                         if i==selected then
                             
-                            local b_changed, b_val = imgui.checkbox("Enabled", preset.enabled)
-                            if b_changed then preset.enabled = b_val; persist_options() end
-                            
-                            imgui.same_line()
+                            if #options.Presets[cat] < 15 and imgui.button("+ Add New Preset (Max 15)###add_preset_" .. cat) then
+                                local src = preset
+                                local new_preset = {
+                                    name = (cat=="Wealthy" and "Luxury" or cat=="Rainy" and "Rainproof" or "Normal") .. " - " .. (#options.Presets[cat] + 1),
+                                    enabled = true,
+                                    teleportPlayer = src.teleportPlayer,
+                                    skipPassenger = src.skipPassenger,
+                                    player = {}, pawns = {}
+                                }
+                                for key,value in pairs(src.player) do new_preset.player[key]=value end
+                                for idx=1,9 do
+                                    new_preset.pawns[idx]={}
+                                    for key,value in pairs(src.pawns[idx]) do new_preset.pawns[idx][key]=value end
+                                end
+                                if unified_presets then unified_presets.clone_player_seats(src,new_preset) end
+                                table.insert(options.Presets[cat],new_preset)
+                                persist_options()
+                                menu.indices[cat]=#options.Presets[cat]
+                                if cat==active_cat then
+                                    pawn_seat_physics.queue_preset(cat,#options.Presets[cat])
+                                end
+                                imgui.pop_id()
+                                break
+                            end
+                            if #options.Presets[cat] < 15 and #options.Presets[cat] > 1 then imgui.same_line() end
                             if #options.Presets[cat] > 1 then
                                 if not preset._confirm_delete then
                                     if imgui.button("Delete Preset###del_" .. cat .. i) then
@@ -2708,9 +2689,8 @@ re.on_draw_ui(function()
                                         if (preset_cursor[cat] or 1)>i then preset_cursor[cat]=preset_cursor[cat]-1
                                         elseif preset_cursor[cat]==i then preset_cursor[cat]=math.min(i,#options.Presets[cat]) end
                                         menu.indices[cat]=math.min(i,#options.Presets[cat])
-                                        if cat==active_cat and seating_lock_active then bind_pawns_to_seats(true) end
                                         persist_options()
-                                        if driving_bus.driver then driving_bus.driver.layout_selected(cat,preset_cursor[cat] or 1) end
+                                        if cat==active_cat then pawn_seat_physics.queue_preset(cat,preset_cursor[cat] or 1) end
                                         imgui.pop_id()
                                         break
                                     end
@@ -2724,12 +2704,32 @@ re.on_draw_ui(function()
                             local s_changed, s_val = imgui.input_text("Preset Name", preset.name)
                             if s_changed then preset.name = s_val; persist_options() end
                             
-                            local tp_changed, tp_val = imgui.checkbox("Adjust Player (animation not work)", preset.teleportPlayer)
-                            if tp_changed then preset.teleportPlayer = tp_val; persist_options() end
-                            
-                            if driving_bus.driver then driving_bus.driver.draw_player(preset) end
-                            if preset.teleportPlayer then
-                                draw_seat_editor("Player Parameters", preset.player)
+                            local tp_changed, tp_val = imgui.checkbox("Adjust Player", preset.teleportPlayer)
+                            if tp_changed then
+                                preset.teleportPlayer = tp_val
+                                if cat==active_cat and i==(preset_cursor[cat] or 1) then
+                                    pawn_seat_physics.sync_player_adjustment(preset)
+                                    if driving_bus.driver then driving_bus.driver.player_adjustment_changed(preset) end
+                                end
+                                persist_options()
+                            end
+                            imgui.same_line()
+                            local skip_changed,skip_value=imgui.checkbox("Skip this preset when player is passenger",preset.skipPassenger==true)
+                            if skip_changed then preset.skipPassenger=skip_value;persist_options() end
+                            if imgui.tree_node("Player parameter") then
+                                local automatic=driving_bus.driver and driving_bus.driver.player_is_driver() and 1 or 2
+                                if menu.player_mode_last~=automatic then
+                                    menu.player_mode,menu.player_mode_last=automatic,automatic
+                                end
+                                local mode_changed,mode=imgui.combo("Player seat",menu.player_mode or automatic,
+                                    {"When player as driver","When player as passenger"})
+                                if mode_changed then menu.player_mode=mode end
+                                if (menu.player_mode or automatic)==1 and driving_bus.driver then
+                                    driving_bus.driver.draw_player(preset)
+                                else
+                                    draw_seat_editor(nil,preset.player,true)
+                                end
+                                imgui.tree_pop()
                             end
                             
                             local members=collect_companions()
@@ -2737,64 +2737,16 @@ re.on_draw_ui(function()
                             for _,binding in ipairs(seat_bindings) do if binding.slot then visible=math.max(visible,binding.slot) end end
                             imgui.text("Up to 9 companions: Main Pawn, other pawns, then following NPCs.")
                             for p_idx = 1, visible do
-                                draw_seat_editor((p_idx<=3 and "Pawn " or "Companion ") .. p_idx .. " Parameters", preset.pawns[p_idx])
+                                draw_seat_editor((p_idx<=3 and "Pawn " or "Companion ") .. p_idx, preset.pawns[p_idx])
                             end
                         end
                         imgui.pop_id()
                     end
                     
-                    if #options.Presets[cat] < 15 then
-                        imgui.spacing()
-                        if imgui.button("+ Add New Preset (Max 15)###add_preset_" .. cat) then
-                            local src = options.Presets[cat][1]
-                            local new_preset = { 
-                                name = (cat=="Wealthy" and "Luxury" or cat=="Rainy" and "Rainproof" or "Normal") .. " - " .. (#options.Presets[cat] + 1), 
-                                enabled = true, 
-                                teleportPlayer = false,
-                                player = { x=src.player.x, z=src.player.z, y=src.player.y, lookX=src.player.lookX, lookZ=src.player.lookZ, anim=src.player.anim, randomIdle=src.player.randomIdle, useDirectMotion=src.player.useDirectMotion, bankID=src.player.bankID, motionID=src.player.motionID },
-                                pawns = {} 
-                            }
-                            for idx = 1, 9 do
-                                new_preset.pawns[idx] = { x=src.pawns[idx].x, z=src.pawns[idx].z, y=src.pawns[idx].y, lookX=src.pawns[idx].lookX, lookZ=src.pawns[idx].lookZ, anim=src.pawns[idx].anim, randomIdle=src.pawns[idx].randomIdle, useDirectMotion=src.pawns[idx].useDirectMotion, bankID=src.pawns[idx].bankID, motionID=src.pawns[idx].motionID }
-                            end
-                            if unified_presets then unified_presets.clone_player_seats(src,new_preset) end
-                            table.insert(options.Presets[cat], new_preset)
-                            persist_options()
-                            menu.indices[cat]=#options.Presets[cat]
-                        end
-                    end
                 end
             end
             imgui.tree_pop()
         end
-        if imgui.tree_node("Other Settings") then
-            local changed = false
-            imgui.spacing()
-            imgui.text("Damage Multipliers")
-
-            local c_ox, v_ox = imgui.drag_float("Ox Damage Received", options.OX_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_ox then options.OX_DAMAGE_RECEIVED = v_ox; changed = true end
-
-            local c_cart, v_cart = imgui.drag_float("Cart Damage Received", options.GIMMICK_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_cart then options.GIMMICK_DAMAGE_RECEIVED = v_cart; changed = true end
-
-            local c_driver, v_driver = imgui.drag_float("Driver Damage Received", options.DRIVER_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_driver then options.DRIVER_DAMAGE_RECEIVED = v_driver; changed = true end
-
-            local c_grd_recv, v_grd_recv = imgui.drag_float("Guard Damage Received", options.GUARD_DAMAGE_RECEIVED, 0.01, 0.0, 10.0)
-            if c_grd_recv then options.GUARD_DAMAGE_RECEIVED = v_grd_recv; changed = true end
-
-            local c_grd_dealt, v_grd_dealt = imgui.drag_float("Guard Damage Dealt", options.GUARD_DAMAGE_DEALT, 0.01, 0.0, 10.0)
-            if c_grd_dealt then options.GUARD_DAMAGE_DEALT = v_grd_dealt; changed = true end
-
-            if changed then
-                persist_options()
-                rebuild_damage_rules()
-            end
-
-            imgui.tree_pop()
-        end
-
         imgui.tree_pop()
     end
 end)
@@ -2836,20 +2788,10 @@ sdk.hook(
             end
         end
 
-        local data = {}
-        data.character = char
-        data.name = data.character:get_CharaIDString()
-        data.layer = sdk.to_int64(args[5]) & 0xffffffff
-        data.priority = sdk.to_int64(args[3]) & 0xffffffff
-        data.node = nodeName
-
-        
-        local skip = false
-        for _,fn in pairs(cart_action_filters) do
-            local currentSkip = fn(data,args)
-            skip = skip or currentSkip
+        local suspended=cart_trip.pause.active or cart_trip.pause.resume_pending or gameplay_is_paused()
+        if movement_control.blocks(char,nodeName,sdk.to_int64(args[5]) & 0xffffffff,runtime_clock,suspended) then
+            return sdk.PreHookResult.SKIP_ORIGINAL
         end
-        if skip then return sdk.PreHookResult.SKIP_ORIGINAL end
     end
 )
 
@@ -2865,125 +2807,209 @@ sdk.hook(
     end
 )
 
--- Damage interception for bound passengers and the nearby cart driver.
-sdk.hook(
-    sdk.find_type_definition("app.HitController"):get_method("damageProc(app.HitController.DamageInfo)"),
-    function(args)
-        -- Driver protection depends on proximity, not passenger bindings.
-        if external_driver_active() then return end
-        if not cart_protection_range_active then return end
-        
-        local damage_info = sdk.to_managed_object(args[3])
-        if not damage_info then return end
-        
-        local receiver = damage_info["<DamageGameObject>k__BackingField"]
-        if not receiver then return end
-
-        -- Compare stable GameObject addresses instead of managed wrappers.
-        local receiver_addr = receiver:get_address()
-
-        -- A nearby driver bypasses the damage transaction entirely.
-        local receiver_name = nil
-        pcall(function()
-            receiver_name = string.sub(receiver:get_Name() or "", 1, 8)
-        end)
-        if receiver_name and driver_character_ids[receiver_name] then
-            return sdk.PreHookResult.SKIP_ORIGINAL
+local cart_protection=assert(rawget(_G,"OJR_CartProtection"))
+local protection_test=cart_protection.new(function(message)
+    if log.info then log.info(message) else log.warn(message) end
+    if rawget(_G,"OJR_RuntimeDiagnostics") then _G.OJR_RuntimeDiagnostics.write('protection',{message=message}) end
+end)
+function pawn_seat_physics.cart_protection_scope()
+    local ox=find_active_ox()
+    if not is_character_valid(ox) or not is_character_valid(player) then return end
+    local ch2=ox.EnemyCtrl and ox.EnemyCtrl.Ch2
+    local controller=ch2 and ch2["<CachedOxcart>k__BackingField"]
+    local c={ox=ox,controller=controller,parts={},targets={},near=player_is_near_cart(ox)}
+    local connect=ch2 and ch2["<CachedConnectParts>k__BackingField"]
+    c.cow=manual_cart and manual_cart.cow or connect and connect.CowChara
+    if manual_cart then c.body=manual_cart.body and manual_cart.body:get_GameObject()
+    elseif controller then pcall(function() c.body=controller:get_GameObject() end) end
+    local function add(go,label,component)
+        if cart_protection.valid(go) then
+            local record={go=go,label=label..' '..tostring(go:get_Name()),component=component}
+            c.targets[#c.targets+1]=record
+            return record
         end
-
-        -- Passenger protection applies only while seat locking is active.
-        if not seating_lock_active then return end
-
-        for _, binding in ipairs(seat_bindings) do
-            local pass_char = binding.char
-            if pass_char then
-                local s_go, pass_go = pcall(function() return pass_char:get_GameObject() end)
-                -- Match the hit receiver against the bound character object.
-                if s_go and pass_go and pass_go:get_address() == receiver_addr then
-                    -- Bound passengers bypass the damage transaction entirely.
-                    return sdk.PreHookResult.SKIP_ORIGINAL
+    end
+    add(ox:get_GameObject(),'ox')
+    if is_character_valid(c.cow) then add(c.cow:get_GameObject(),'connected ox') end
+    add(c.body,'cart body')
+    local ok,err=pcall(function()
+        local parts=controller and controller.PartsList
+        if parts then
+            for i=0,parts:get_Count()-1 do
+                local component=parts:get_Item(i)
+                if cart_protection.valid(component) then
+                    local record=add(component:get_GameObject(),'cart part '..i,component)
+                    if record then c.parts[#c.parts+1]=record end
                 end
             end
         end
+    end)
+    if not ok then protection_test:report('parts','PartsList unavailable: '..tostring(err)) end
+    return c
+end
+function pawn_seat_physics.update_cart_protection()
+    local ok,c=pcall(pawn_seat_physics.cart_protection_scope)
+    if not ok then
+        protection_test:report('scope','scope failed: '..tostring(c))
+        protection_test:clear();return
     end
-)
-
-sdk.hook(
-    sdk.find_type_definition("app.HitController"):get_method("calcDamageValue(app.HitController.DamageInfo)"),
-    function(args)
-        local damage_info = sdk.to_managed_object(args[3])
-        thread.get_hook_storage().damage_info = damage_info
-    end,
-    function(retval)
-        if external_driver_active() then return retval end
-        if not cart_protection_range_active then return end -- 仅在附近生效
-        local damage_info = thread.get_hook_storage().damage_info
-        if not damage_info then return end
-        local receiver = damage_info["<DamageGameObject>k__BackingField"]
-        local receiver_id = receiver and string.sub(receiver:get_Name(),1,8)
-        local attacker = damage_info["<AttackOwnerObject>k__BackingField"]
-        local attacker_id = attacker and string.sub(attacker:get_Name(),1,8)
-        local ox = find_active_ox()
-
-        local receiver_character = nil
-        local attacker_character = nil
-        if receiver then
-            pcall(function() receiver_character = receiver:call("getComponent(System.Type)", sdk.typeof("app.Character")) end)
-        end
-        if attacker then
-            pcall(function() attacker_character = attacker:call("getComponent(System.Type)", sdk.typeof("app.Character")) end)
-        end
-        
-        if receiver_id and entity_damage_rules[receiver_id] and entity_damage_rules[receiver_id].received then
-            if receiver_id ~= "ch299003" or receiver_character == ox then
-                damage_info.Damage = entity_damage_rules[receiver_id].received * damage_info.Damage
-            end
-        end
-        if attacker_id and entity_damage_rules[attacker_id] and entity_damage_rules[attacker_id].dealt then
-            if attacker_id ~= "ch299003" or attacker_character == ox then
-                damage_info.Damage = entity_damage_rules[attacker_id].dealt * damage_info.Damage
-            end
-        end
-        if options.DISABLE_PAWN_DAMAGE and receiver_id and attacker_id then
-            local attackerType = string.sub(attacker_id,1,3)
-            if protected_cart_part_ids[receiver_id] and (attackerType == "ch1" or attackerType == "ch3") then
-                damage_info.Damage = 0.0
-            end
-        end
+    if not c or not c.near then protection_test:clear();return end
+    local now=os.clock()
+    local key=c.ox:get_address()
+    if protection_test.cart==key and now<(protection_test.next_at or 0) then return end
+    protection_test.cart,protection_test.next_at=key,now+0.25
+    local scope_key=key..':'..#c.targets..':'..#c.parts
+    if protection_test.scope_key~=scope_key then
+        protection_test.scope_key=scope_key
+        protection_test:report('scope:'..scope_key,'scope ox='..tostring(c.ox:get_GameObject():get_Name())
+            ..' targets='..#c.targets..' PartsList='..#c.parts,now)
     end
-)
+    protection_test:tick(c.targets,function(go)
+        local result={}
+        local component=go:call('getComponent(System.Type)',sdk.typeof('app.HitController'))
+        if component then result[#result+1]=component end
+        return result
+    end,now)
+end
+re.on_application_entry('UpdateBehavior',pawn_seat_physics.update_cart_protection)
 
+-- Prevent only the active nearby cart's native breakup; no repair or reconnect.
+function pawn_seat_physics.prevent_cart_breakup(component)
+    if options.PREVENT_CART_BREAKUP~=true or not component then return false end
+    local ok,result=pcall(function()
+        local ox=find_active_ox()
+        if not is_character_valid(ox) or not is_character_valid(player) then return false end
+        local controller=ox.EnemyCtrl.Ch2["<CachedOxcart>k__BackingField"]
+        if not controller or controller:get_address()~=component:get_address() then return false end
+        local body=component:get_GameObject()
+        if not body or not body:get_Valid() then return false end
+        return (player:get_Transform():get_Position()-body:get_Transform():get_Position()):length()<50
+    end)
+    return ok and result==true
+end
+function pawn_seat_physics.prevent_cart_part_breakup(component)
+    if options.PREVENT_CART_BREAKUP~=true or not component then return false end
+    local ok,result=pcall(function()
+        local c=pawn_seat_physics.cart_protection_scope()
+        if not c or not cart_protection.valid(c.body) then return false end
+        if (player:get_Transform():get_Position()-c.body:get_Transform():get_Position()):length()>=50 then return false end
+        for _,part in ipairs(c.parts) do
+            if cart_protection.same(component,part.component) then return true end
+        end
+        return false
+    end)
+    if not ok then protection_test:report('part-break-error','part breakup check failed: '..tostring(result)) end
+    return ok and result==true
+end
+do
+    local definition=sdk.find_type_definition("app.Gm80_042")
+    local method=definition and definition:get_method("executeBreak(System.Boolean)")
+    if method then
+        sdk.hook(method,function(args)
+            local component=sdk.to_managed_object(args[2])
+            local blocked=pawn_seat_physics.prevent_cart_breakup(component)
+            protection_test:report('body-break','Gm80_042.executeBreak blocked='..tostring(blocked))
+            if blocked then return sdk.PreHookResult.SKIP_ORIGINAL end
+        end,function(retval) return retval end)
+    else log.warn("[OJR] Native cart breakup protection unavailable") end
+    local parts_definition=sdk.find_type_definition('app.Sm80_042_Parts')
+    local parts_method=parts_definition and parts_definition:get_method('executeBreak(System.Boolean)')
+    if parts_method then
+        sdk.hook(parts_method,function(args)
+            local component=sdk.to_managed_object(args[2])
+            if pawn_seat_physics.prevent_cart_part_breakup(component) then
+                protection_test:report('part-break:'..component:get_address(),'blocked Sm80_042_Parts.executeBreak: '..tostring(component:get_GameObject():get_Name()))
+                return sdk.PreHookResult.SKIP_ORIGINAL
+            end
+            local ok,details=pcall(function()
+                local c=pawn_seat_physics.cart_protection_scope()
+                return 'target='..tostring(component:get_GameObject():get_Name())..' parts='..tostring(c and #c.parts)
+            end)
+            protection_test:report('part-break-allowed','Sm80_042_Parts.executeBreak NOT blocked: '..tostring(details))
+        end,function(retval) return retval end)
+        protection_test:report('part-hook','Sm80_042_Parts.executeBreak test hook installed')
+    else protection_test:report('part-hook','Sm80_042_Parts.executeBreak unavailable') end
+end
+
+-- Shared damage policy for both driving modes; no attacker multipliers.
+function pawn_seat_physics.protection_for(info)
+    local ok,rule=pcall(function()
+        local receiver=info and info["<DamageGameObject>k__BackingField"]
+        if not receiver or not receiver:get_Valid() then return end
+        local policy=cart_protection
+        if seating_lock_active then
+            for _,binding in ipairs(seat_bindings) do
+                local ch=binding.char
+                if ch~=player and is_character_valid(ch) and policy.same(receiver,ch:get_GameObject()) then
+                    return "companion"
+                end
+            end
+        end
+        local c=pawn_seat_physics.cart_protection_scope()
+        if c and policy.cart_receiver(receiver,c.ox,c.body,c.cow,c.near,c.parts) then return "cart" end
+    end)
+    if not ok then protection_test:report('damage-rule','damage recognition failed: '..tostring(rule)) end
+    return ok and rule or nil
+end
+function pawn_seat_physics.record_damage(stage,controller,info,rule)
+    local ok,err=pcall(function()
+        local function read(fn) local success,value=pcall(fn);if success then return value end end
+        local function describe(go)
+            if not go then return 'nil' end
+            return tostring(read(function() return go:get_Name() end))..'@'..tostring(read(function() return go:get_address() end))
+        end
+        local receiver=read(function() return info['<DamageGameObject>k__BackingField'] end)
+        local hit_go=read(function() return controller:get_GameObject() end)
+        local owner=read(function() return info['<DamageOwnerHitController>k__BackingField']:get_GameObject() end)
+        local c=read(pawn_seat_physics.cart_protection_scope)
+        local label=describe(receiver)..' hit='..describe(hit_go)..' owner='..describe(owner)
+        if not rule and not (c and c.near) and not label:find('ch299003',1,true)
+            and not label:find('gm80_',1,true) and not label:find('sm80_',1,true) then return end
+        local current=read(function() return controller:call('get_IsInvincible()') end)
+        protection_test:report('damage:'..stage..':'..label,stage..' rule='..tostring(rule)..' receiver='..label
+            ..' damage='..tostring(read(function() return info.Damage end))..' invincible='..tostring(current)
+            ..' active_ox='..tostring(c and describe(c.ox:get_GameObject()))..' near='..tostring(c and c.near)
+            ..' parts='..tostring(c and #c.parts))
+    end)
+    if not ok then protection_test:report('damage-log-error','Damage diagnostic failed: '..tostring(err)) end
+end
 sdk.hook(
-    sdk.find_type_definition("app.HitController"):get_method("updateDamage(app.HitController.DamageInfo, System.UInt32, System.Single, System.Boolean)"),
+    sdk.find_type_definition("app.HitController"):get_method("damageProc(app.HitController.DamageInfo)"),
     function(args)
-        if external_driver_active() then return end
-        if not cart_protection_range_active then return end -- 仅在附近生效
-        local damage_info = sdk.to_managed_object(args[3])
-        local receiver = damage_info["<DamageGameObject>k__BackingField"]
-        local receiver_id = receiver and string.sub(receiver:get_Name(),1,8)
-        if options.PREVENT_INSTABREAKS and protected_cart_part_ids[receiver_id] and damage_info.Damage > 1999.0 then
+        local info=sdk.to_managed_object(args[3])
+        local rule=pawn_seat_physics.protection_for(info)
+        pawn_seat_physics.record_damage('damageProc',sdk.to_managed_object(args[2]),info,rule)
+        if rule then
             return sdk.PreHookResult.SKIP_ORIGINAL
         end
     end
 )
+sdk.hook(
+    sdk.find_type_definition("app.HitController"):get_method("updateDamage(app.HitController.DamageInfo, System.UInt32, System.Single, System.Boolean)"),
+    function(args)
+        local info=sdk.to_managed_object(args[3])
+        local rule=pawn_seat_physics.protection_for(info)
+        pawn_seat_physics.record_damage('updateDamage',sdk.to_managed_object(args[2]),info,rule)
+        if rule then return sdk.PreHookResult.SKIP_ORIGINAL end
+    end
+)
 
-local blocked_status_ids = {
-    [1] = "Poison", [2] = "Sleep", [3] = "Faint", [4] = "Wet", [5] = "FireSpread", [6] = "OilSpread",
-    [7] = "VirulentPoison", [8] = "Frostbite", [9] = "Freeze", [10] = "Oil", [11] = "Silence", [12] = "Stone",
-    [13] = "Electric", [14] = "WetElectric",
-}
-
+-- Preserve ox debilitation protection, without rules for NPC drivers or guards.
 sdk.hook(
     sdk.find_type_definition("app.StatusConditionCtrl"):get_method("reqStatusConditionApplyCore(app.StatusConditionDef.StatusConditionEnum, app.HitController.DamageInfo, app.StatusConditionDef.RequestInfo, System.Boolean)"),
     function(args)
-        if not cart_protection_range_active then return end -- 仅在附近生效
-        local status = sdk.to_int64(args[3]) & 0xFFFFFFFF
-        local statusConditionCtrl = sdk.to_managed_object(args[2])
-        local owner = statusConditionCtrl.OwnerCharacter
-        local ownerName = string.sub(owner and owner:get_CharaIDString() or "",1,8)
-        local ox = find_active_ox()
-        if options.STATUS_IMMUNITY and blocked_status_ids[status] and (guard_character_ids[ownerName] or driver_character_ids[ownerName] or (ownerName == "ch299003" and owner == ox)) then
-            return sdk.PreHookResult.SKIP_ORIGINAL 
-        end
+        if not options.STATUS_IMMUNITY then return end
+        local ok,blocked=pcall(function()
+            local controller=sdk.to_managed_object(args[2])
+            local ox=find_active_ox()
+            local status=sdk.to_int64(args[3]) & 0xffffffff
+            return status>=1 and status<=14 and is_character_valid(ox) and player_is_near_cart(ox) and controller.OwnerCharacter==ox
+        end)
+        if ok and blocked then return sdk.PreHookResult.SKIP_ORIGINAL end
     end
 )
+re.on_script_reset(function()
+    protection_test:clear()
+    movement_control.clear()
+    passenger_hud:restore()
+end)
