@@ -16,6 +16,16 @@ local function request(node,layer,who)
 end
 local cart={ox=ox,cow=cow,body=body,anchor=body,status=status}
 driver.pos=body.pos
+function passenger_controller:isPlayerSit() return self.seated end
+-- Discovery alone is not permission to stop an untouched native cart.
+assert(bus.journey.resolve_body(ox)==body)
+npc_driver_seat.SitChara=nil;npc_driver_seat.seated=false
+ox.am.CurrentActionList[0].Name='Walk'
+assert(not bus.journey.enforce_driver_wait(ox),'Discovery alone took over native cart')
+request('Run');assert(ox.am.CurrentActionList[0].Name=='Run','Unridden cart native movement blocked')
+passenger_controller.seated=true
+assert(bus.journey.enforce_driver_wait(ox),'Passenger interaction did not register managed cart')
+passenger_controller.seated=false
 -- A registered nearby NPC must actually occupy the fully entered driving seat.
 for _,case in ipairs({{occupant=false,seated=true},{occupant=driver,seated=false},{occupant=pawns[1],seated=true}}) do
     npc_driver_seat.SitChara=case.occupant or nil;npc_driver_seat.seated=case.seated

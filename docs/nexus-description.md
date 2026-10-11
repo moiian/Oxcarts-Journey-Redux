@@ -1,4 +1,4 @@
-# Oxcarts Journey Redux
+# Oxcarts Journey Redux 5.1
 
 **Take the reins. Bring your companions. Make the journey part of the adventure.**
 
@@ -26,3 +26,9 @@ Updating preserves your existing presets and keybinds. To try the included layou
 Requires **REFramework**. Install the ZIP with **Fluffy Mod Manager**, or merge the included `reframework` folder into your Dragon's Dogma 2 game folder. Restart the game or use **Reset scripts** after installing.
 
 **Created by aelinore.**
+
+## Version 5.1
+
+- Performance optimizations while exploring and riding.
+- Carts you have not ridden or driven retain their native driver behavior.
+- Existing seating presets, keybinds, and separate FOV/distance overrides are preserved.

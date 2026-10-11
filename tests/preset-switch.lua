@@ -116,14 +116,14 @@ pawn_seat_physics.advance_frame();assert(not machine.enabled)
 local cart_action_filters={}
 function pawn:get_CharaIDString() return 'pawn' end
 local action_hook
+local cart_context={}
 local sdk={PreHookResult={SKIP_ORIGINAL='skip'},to_managed_object=function(v) return v end,
     to_int64=function(v) return v end,typeof=function(v) return v end,
     find_type_definition=function() return {get_method=function() return {} end} end,
     hook=function(_,fn) action_hook=fn end}
 -- ACTION HOOK --
 local function invoke(node)
-    local owner={get_Valid=function() return true end,call=function() return pawn end}
-    return action_hook({nil,{get_GameObject=function() return owner end},0,{ToString=function() return node end},0})
+    return action_hook({nil,pawn['<ActionManager>k__BackingField'],0,{ToString=function() return node end},0})
 end
 assert(invoke('Run')==nil,'Retired competing-action hook still blocks requests')
 assert(invoke('Caught')==nil and #seat_bindings==0 and machine.enabled,'Caught did not restore FSM before release')

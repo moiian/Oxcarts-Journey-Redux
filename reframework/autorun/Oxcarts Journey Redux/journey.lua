@@ -705,29 +705,72 @@ local function update_runtime_clock()
     runtime_clock = runtime_clock + deltaTime
 end
 
+local cart_context = {next_lookup=0}
+function cart_context.select(ox)
+    local key=ox and ox:get_address()
+    if cart_context.key~=key then
+        cart_context.key,cart_context.ox,cart_context.body,cart_context.scene=key,ox,nil,nil
+        cart_context.managed,cart_context.next_lookup=false,0
+    end
+end
+function cart_context.remember(ox,body)
+    cart_context.select(ox)
+    cart_context.body,cart_context.managed=body,true
+end
+function cart_context.is_managed(ox)
+    if not is_character_valid(ox) or cart_context.key~=ox:get_address()
+        or cart_context.managed~=true or not cart_context.body then return false end
+    local ok,valid=pcall(function() return cart_context.body:get_GameObject():get_Valid() end)
+    return ok and valid==true
+end
+re.on_script_reset(function()
+    cart_context.key,cart_context.ox,cart_context.body,cart_context.scene=nil,nil,nil,nil
+    cart_context.managed,cart_context.next_lookup=false,0
+end)
 local function find_active_ox()
     if manual_cart then return manual_cart.ox end
     local oxObject = npc_manager.OxcartManager._RaidAttack_CachedGameObject
-    if not oxObject then return nil end
+    if not oxObject then cart_context.select(nil);return nil end
     local is_valid = false
     pcall(function() is_valid = oxObject:get_Valid() end)
-    if not is_valid then return nil end
+    if not is_valid then cart_context.select(nil);return nil end
     
     local char = nil
     pcall(function() char = oxObject:call("getComponent(System.Type)", sdk.typeof("app.Character")) end)
+    cart_context.select(char)
     return char
 end
 
-local function find_cart_body(ox)
+local function find_cart_body(ox, cache_only)
     if manual_cart and ox==manual_cart.ox then return manual_cart.body end
     if not ox then return nil end
     local ox_pos = nil
     pcall(function() ox_pos = ox:get_Transform():get_Position() end)
     if not ox_pos then return nil end
 
+    cart_context.select(ox)
     local scene = sdk.call_native_func(scene_manager, scene_manager_type, "get_CurrentScene()")
+    local scene_ok,scene_key=pcall(function() return scene:get_address() end)
+    scene_key=scene_ok and scene_key or scene
+    if cart_context.scene and cart_context.scene~=scene_key then
+        cart_context.body,cart_context.managed,cart_context.next_lookup=nil,false,0
+    end
+    cart_context.scene=scene_key
     if not scene then return nil end
-    
+    if cart_context.body then
+        local ok,valid=pcall(function()
+            return cart_context.body:get_GameObject():get_Valid()
+                and (ox_pos-cart_context.body:get_Position()):length()<12
+        end)
+        if ok and valid then return cart_context.body end
+        cart_context.body=nil
+        cart_context.next_lookup=0
+    end
+    if cache_only then return nil end
+    local now=os.clock()
+    if now<cart_context.next_lookup then return nil end
+    cart_context.next_lookup=now+0.25
+
     -- Candidate names cover the known cart-body variants.
     local possible_names = {
         "gm80_042", -- 雨天顶棚车厢 / 动态生成的普通车
@@ -749,6 +792,7 @@ local function find_cart_body(ox)
             if is_valid then
                 local cart_transform = cart_go:get_Transform()
                 if (ox_pos - cart_transform:get_Position()):length() < 12.0 then
+                    cart_context.body=cart_transform
                     return cart_transform 
                 end
             end
@@ -1003,6 +1047,21 @@ end
 -- Pawn root transforms, universal position and physical controller must agree.
 -- Player positions remain owned by the existing native passenger interaction.
 local pawn_seat_physics = {}
+function pawn_seat_physics.track_action(character)
+    if not character then return end
+    local manager=character["<ActionManager>k__BackingField"]
+    if not manager then return end
+    local ok,key=pcall(function() return manager:get_address() end)
+    pawn_seat_physics.action_targets=pawn_seat_physics.action_targets or {}
+    pawn_seat_physics.action_targets[ok and key or manager]=character
+end
+function pawn_seat_physics.refresh_action_targets(ox)
+    pawn_seat_physics.action_targets=nil
+    if not ox and #seat_bindings==0 then return end
+    pawn_seat_physics.track_action(player)
+    pawn_seat_physics.track_action(ox)
+    for _,binding in ipairs(seat_bindings) do pawn_seat_physics.track_action(binding.char) end
+end
 function pawn_seat_physics.request_pose_action(character, node, priority)
     local manager = character["<ActionManager>k__BackingField"]
     assert(manager, "Pawn ActionManager unavailable")
@@ -1188,6 +1247,9 @@ end
 function pawn_seat_physics.remove(index, native_interaction)
     local binding=seat_bindings[index]
     if not binding then return end
+    for key,ch in pairs(pawn_seat_physics.action_targets or {}) do
+        if ch==binding.char then pawn_seat_physics.action_targets[key]=nil end
+    end
     local display=rawget(_G,"OJR_CompanionDisplay")
     if display and not native_interaction then pcall(display.commit,binding,seat_anchor_transform) end
     pawn_seat_physics.restore_fsm(binding)
@@ -1200,6 +1262,7 @@ function pawn_seat_physics.remove(index, native_interaction)
     if #seat_bindings == 0 then seating_lock_active = false end
 end
 function pawn_seat_physics.prune_party()
+    if #seat_bindings==0 and not pawn_seat_physics.follow_roster then return end
     local ok, _, roster = pcall(collect_companions)
     if not ok or not roster then return end -- Unreadable does not prove departure.
     for i = #seat_bindings, 1, -1 do
@@ -1240,6 +1303,7 @@ end)
 -- Let the requested animation initialize, then freeze the captured NPC FSM.
 local function start_seated_animation(char, seat_spec, force_anim_node, pending_binding, legacy_switch)
     if not char or not char:get_Valid() then return end
+    pawn_seat_physics.track_action(char)
     local is_pawn = char ~= player
     local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
     if is_pawn and diagnostics then
@@ -1395,6 +1459,7 @@ local function bind_pawns_to_seats(legacy_switch, add_missing_only)
     end
 
     if not manual_cart and not add_missing_only and preset.teleportPlayer and player and player:get_Valid() and player_uses_cart_seat_node() then
+        pawn_seat_physics.track_action(player)
         table.insert(seat_bindings, {char = player, seat_spec = preset.player})
     end
 
@@ -1616,6 +1681,13 @@ end
 function pawn_seat_physics.driver_wait_reason(ox)
     if not is_character_valid(ox) then return nil end
     if manual_cart or (driving_bus.driver and driving_bus.driver.player_is_driver()) then return nil end
+    if not cart_context.is_managed(ox) then
+        if not player_is_cart_passenger(ox) then return nil end
+        local body=find_cart_body(ox)
+        if not body then return nil end
+        cart_context.remember(ox,body)
+        pawn_seat_physics.track_action(ox)
+    end
     local ok,reason=pcall(function()
         local status=npc_manager.OxcartManager:getStatus(ox:get_CharaID())
         if not status then return "no NPC driver" end
@@ -2369,6 +2441,11 @@ end
 
 local journey_handoff = { suspended = false, restore_seats = false }
 driving_bus.journey = {
+    resolve_body = find_cart_body,
+    cache_body = function(ox,body)
+        cart_context.select(ox)
+        cart_context.body=body
+    end,
     diagnostics_render = function()
         local diagnostics=rawget(_G,"OJR_RuntimeDiagnostics")
         if diagnostics and seat_anchor_transform then
@@ -2422,6 +2499,8 @@ driving_bus.journey = {
     draw_backup_keybinds=function() pawn_seat_physics.draw_backup_keybinds() end,
     presets = unified_presets,
     begin_manual = function(cart)
+        cart_context.remember(cart.ox,cart.body)
+        pawn_seat_physics.track_action(cart.ox)
         passenger_hud:restore()
         seating_lock_active=false
         detach_bound_characters()
@@ -2460,6 +2539,7 @@ driving_bus.journey = {
         player=character_manager["<ManualPlayer>k__BackingField"]
         if not manual_cart then return end
         local cart=manual_cart
+        pawn_seat_physics.refresh_action_targets(cart.ox)
         local ok,intact=pcall(function()
             return is_character_valid(player) and is_character_valid(cart.ox)
                 and cart.body:get_GameObject():get_Valid()
@@ -2600,6 +2680,7 @@ re.on_application_entry("LateUpdateBehavior", function()
         return
     end
     input = player:get_Input()
+    pawn_seat_physics.refresh_action_targets(cart_context.is_managed(ox) and ox or nil)
 
     local in_photo_mode = photo_mode_is_open()
 
@@ -2667,6 +2748,13 @@ re.on_application_entry("LateUpdateBehavior", function()
     local sitting = player_is_cart_passenger(ox)
     if not sitting then passenger_hud:restore() end
     local physically_sitting = player_is_physically_seated(ox)
+    if sitting and physically_sitting then
+        local body=find_cart_body(ox)
+        if body then
+            cart_context.remember(ox,body)
+            pawn_seat_physics.track_action(ox)
+        end
+    end
     if not prior_cart_seat_state and physically_sitting and sitting then
         local action=get_cart_action(ox):lower()
         local companions_seated=false
@@ -3058,13 +3146,14 @@ sdk.hook(
     sdk.find_type_definition("app.ActionManager"):get_method("requestActionCore(app.ActionManager.Priority, System.String, System.UInt32)"),
     function(args)
         local ok,result=pcall(function()
-            local this = sdk.to_managed_object(args[2])
             if external_driver_active() then return end
-            local owner = this:get_GameObject()
-            if not owner or not owner:get_Valid() then return end      
-        
-            local char = owner:call("getComponent(System.Type)", sdk.typeof("app.Character"))
-            if not char then return end
+            if not seating_lock_active and not cart_context.managed and not movement_control.command then return end
+            local this = sdk.to_managed_object(args[2])
+            if not this then return end
+            local read_ok,key=pcall(function() return this:get_address() end)
+            local char=(pawn_seat_physics.action_targets or {})[read_ok and key or this]
+            if not char or not is_character_valid(char) then return end
+            if char~=player and char~=cart_context.ox and not seating_lock_active then return end
         
             local nodeName = sdk.to_managed_object(args[4]):ToString()
             local n = nodeName:lower()
@@ -3093,7 +3182,7 @@ sdk.hook(
             end
 
             if (sdk.to_int64(args[5]) & 0xffffffff)==0 and (nodeName=="Walk" or nodeName=="Run" or nodeName=="Dash")
-                and char==find_active_ox() and not gameplay_is_paused() and pawn_seat_physics.driver_wait_reason(char) then
+                and char==cart_context.ox and not gameplay_is_paused() and pawn_seat_physics.driver_wait_reason(char) then
                 trace_cart_event("ojr_request_blocked",{node=nodeName,reason="no seated driver"})
                 return sdk.PreHookResult.SKIP_ORIGINAL
             end

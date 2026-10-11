@@ -319,20 +319,24 @@ local function discover()
     local parts = ch and ch["<CachedConnectParts>k__BackingField"]
     local cow = parts and parts.CowChara
     if not valid(cow) then return nil end
-    local scene = sdk.call_native_func(sdk.get_native_singleton("via.SceneManager"),
-        sdk.find_type_definition("via.SceneManager"), "get_CurrentScene()")
-    if not scene then return nil end
-    local best, nearest = nil, 12
-    for _, model in ipairs({ "gm80_042", "gm80_052", "gm81_004" }) do
-        for suffix = -1, 10 do
-            local name = suffix == -1 and model or string.format("%s_%02d", model, suffix)
-            local body = scene:call("findGameObject(System.String)", name)
-            if valid(body) then
-                local transform = body:get_Transform()
-                local distance = (transform:get_Position() - ox:get_Transform():get_Position()):length()
-                if distance < nearest then best, nearest = transform, distance end
+    local best=bus.journey.resolve_body(ox,true)
+    if not best then
+        local scene = sdk.call_native_func(sdk.get_native_singleton("via.SceneManager"),
+            sdk.find_type_definition("via.SceneManager"), "get_CurrentScene()")
+        if not scene then return nil end
+        local nearest = 12
+        for _, model in ipairs({ "gm80_042", "gm80_052", "gm81_004" }) do
+            for suffix = -1, 10 do
+                local name = suffix == -1 and model or string.format("%s_%02d", model, suffix)
+                local body = scene:call("findGameObject(System.String)", name)
+                if valid(body) then
+                    local transform = body:get_Transform()
+                    local distance = (transform:get_Position() - ox:get_Transform():get_Position()):length()
+                    if distance < nearest then best, nearest = transform, distance end
+                end
             end
         end
+        if best then bus.journey.cache_body(ox,best) end
     end
     if not best then return nil end
     local anchor, child = best, best:get_Child()
@@ -1402,15 +1406,17 @@ hook("app.ActionManager", "requestActionCore(app.ActionManager.Priority, System.
     local ok,result=pcall(function()
         local request_am=sdk.to_managed_object(args[2])
         if request_am and (sdk.to_int64(args[5]) & 0xffffffff)==0 then
-            local owner=request_am:get_GameObject()
-            if not valid(owner) then return end
-            local waiting=driver_wait_control.waits[address(owner)]
-            if waiting and os.clock()<waiting.until_time then
-                local node=sdk.to_managed_object(args[4]):ToString()
-                if node=="Walk" or node=="Run" or node=="Dash" then return sdk.PreHookResult.SKIP_ORIGINAL end
+            local request_key=address(request_am) or request_am
+            for _,waiting in pairs(driver_wait_control.waits) do
+                local manager=valid(waiting.ox) and waiting.ox["<ActionManager>k__BackingField"]
+                if manager and request_key==(address(manager) or manager) and os.clock()<waiting.until_time then
+                    local node=sdk.to_managed_object(args[4]):ToString()
+                    if node=="Walk" or node=="Run" or node=="Dash" then return sdk.PreHookResult.SKIP_ORIGINAL end
+                end
             end
             local q=state.native_drive
-            if q and address(owner)==address(q.cart.ox:get_GameObject()) then
+            local manager=q and valid(q.cart.ox) and q.cart.ox["<ActionManager>k__BackingField"]
+            if manager and request_key==(address(manager) or manager) then
                 local node=sdk.to_managed_object(args[4]):ToString()
                 if speed_control.blocks(q.cart.ox,node,0,os.clock(),paused()) then return sdk.PreHookResult.SKIP_ORIGINAL end
             end

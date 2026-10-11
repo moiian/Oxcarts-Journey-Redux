@@ -58,6 +58,9 @@ try {
     $driverlessAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'driverless-wait.lua')
     ($mock+"`n"+$setup+"`n"+$driver+"`n"+$driverlessAssertions) | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Driverless cart Wait policy failed' }
+    $optimizationAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'runtime-optimization.lua')
+    ($mock+"`n"+$setup+"`n"+$driver+"`n"+$optimizationAssertions) | python -X utf8 $LuaChecker --execute
+    if ($LASTEXITCODE -ne 0) { throw 'Idle cost / action targets / body cache / managed-cart isolation failed' }
     $protectionAssertions=Get-Content -Raw (Join-Path $PSScriptRoot 'protection-runtime.lua')
     ($mock+"`n"+$setup+"`n"+$driver+"`n"+$protectionAssertions) | python -X utf8 $LuaChecker --execute
     if ($LASTEXITCODE -ne 0) { throw 'Native invincibility / actual cart parts integration failed' }
